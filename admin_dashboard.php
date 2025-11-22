@@ -1,1414 +1,2520 @@
-<?php
-session_start();
-require 'config.php';
-
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
-    header('Location: login.php');
-    exit();
-}
-
-// Handle user operations
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['add_user'])) {
-        $username = $_POST['username'];
-        $email = $_POST['email'];
-        $password = $_POST['password'];
-        $role = $_POST['role'];
-
-        $stmt = $pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$username, $email, $password, $role]);
-        $user_id = $pdo->lastInsertId();
-
-        // Create corresponding record in students or staff table
-        if ($role == 'student') {
-            $name = $_POST['name'];
-            $department = $_POST['department'];
-            $semester = $_POST['semester'];
-            $stmt = $pdo->prepare("INSERT INTO students (user_id, name, email, department, semester) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$user_id, $name, $email, $department, $semester]);
-        } elseif ($role == 'staff') {
-            $name = $_POST['name'];
-            $department = $_POST['department'];
-            $designation = $_POST['designation'];
-            $stmt = $pdo->prepare("INSERT INTO staff (user_id, name, email, department, designation) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$user_id, $name, $email, $department, $designation]);
-        }
-
-        $success = "User added successfully!";
-    }
-
-    if (isset($_POST['delete_user'])) {
-        $user_id = $_POST['user_id'];
-        $stmt = $pdo->prepare("DELETE FROM users WHERE user_id = ?");
-        $stmt->execute([$user_id]);
-        $success = "User deleted successfully!";
-    }
-}
-
-// Get all users
-$users_stmt = $pdo->prepare("SELECT * FROM users");
-$users_stmt->execute();
-$users = $users_stmt->fetchAll();
-
-// Get all students
-$students_stmt = $pdo->prepare("SELECT * FROM students");
-$students_stmt->execute();
-$students = $students_stmt->fetchAll();
-
-// Get all staff
-$staff_stmt = $pdo->prepare("SELECT * FROM staff");
-$staff_stmt->execute();
-$staff = $staff_stmt->fetchAll();
-
-// Get department statistics
-$dept_stats_stmt = $pdo->prepare("
-    SELECT department, COUNT(*) as count 
-    FROM students 
-    GROUP BY department
-");
-$dept_stats_stmt->execute();
-$dept_stats = $dept_stats_stmt->fetchAll();
-?>
-
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CyberAdmin | Control Panel</title>
+    <title>GSSSIETW</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root {
-            --neon-blue: #00f3ff;
-            --neon-purple: #b967ff;
-            --neon-pink: #ff2a6d;
-            --neon-green: #00ff9f;
-            --dark-bg: #0a0a0f;
-            --darker-bg: #050508;
-            --card-bg: rgba(16, 16, 26, 0.8);
-            --card-border: rgba(0, 243, 255, 0.1);
-            --text-primary: #ffffff;
-            --text-secondary: #b8b8b8;
-            --glow-blue: 0 0 20px #00f3ff;
-            --glow-purple: 0 0 20px #b967ff;
-            --glow-pink: 0 0 20px #ff2a6d;
-            --radius: 12px;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        :root {
+            --primary-blue: #4361ee;
+            --accent-pink: #f72585;
+            --dark-navy: #1a1a2e;
+            --light-bg: #f8f9fa;
+            --glass-bg: rgba(255, 255, 255, 0.25);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --info: #17a2b8;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
         }
 
         body {
-            font-family: 'Rajdhani', sans-serif;
-            background: var(--dark-bg);
-            color: var(--text-primary);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: var(--dark-navy);
             min-height: 100vh;
-            overflow-x: hidden;
-            background-image: 
-                radial-gradient(circle at 10% 20%, rgba(0, 243, 255, 0.05) 0%, transparent 20%),
-                radial-gradient(circle at 90% 80%, rgba(185, 103, 255, 0.05) 0%, transparent 20%),
-                radial-gradient(circle at 50% 50%, rgba(255, 42, 109, 0.03) 0%, transparent 50%);
-        }
-
-        .cyber-grid {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: 
-                linear-gradient(rgba(0, 243, 255, 0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 243, 255, 0.1) 1px, transparent 1px);
-            background-size: 50px 50px;
-            z-index: -1;
-            opacity: 0.3;
         }
 
         .dashboard-container {
-            display: grid;
-            grid-template-columns: 280px 1fr;
+            display: flex;
             min-height: 100vh;
         }
 
-        /* Cyber Sidebar */
-        .cyber-sidebar {
-            background: var(--darker-bg);
-            border-right: 1px solid var(--card-border);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .cyber-sidebar::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
-            animation: scanline 3s linear infinite;
-        }
-
-        @keyframes scanline {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        .sidebar-header {
-            padding: 30px 25px;
-            text-align: center;
-            border-bottom: 1px solid var(--card-border);
-            position: relative;
-        }
-
-        .sidebar-header h2 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.8rem;
-            font-weight: 900;
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            text-shadow: var(--glow-blue);
-            margin-bottom: 10px;
-        }
-
-        .sidebar-header p {
-            color: var(--neon-green);
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-
-        .cyber-menu {
-            padding: 25px 0;
-        }
-
-        .cyber-menu-item {
-            padding: 18px 30px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            color: var(--text-secondary);
-            text-decoration: none;
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, rgba(19, 7, 7, 0.61) 100%);
+            color: white;
             transition: var(--transition);
-            border-left: 3px solid transparent;
-            margin: 8px 15px;
-            border-radius: 8px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .cyber-menu-item::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.1), transparent);
-            transition: var(--transition);
-        }
-
-        .cyber-menu-item:hover::before {
-            left: 100%;
-        }
-
-        .cyber-menu-item.active {
-            color: var(--neon-blue);
-            border-left-color: var(--neon-blue);
-            background: rgba(0, 243, 255, 0.05);
-            box-shadow: inset 0 0 15px rgba(0, 243, 255, 0.1);
-        }
-
-        .cyber-menu-item i {
-            width: 20px;
-            text-align: center;
-            font-size: 1.2rem;
-        }
-
-        /* Main Content */
-        .cyber-main {
-            padding: 30px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
             overflow-y: auto;
         }
 
-        .cyber-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 40px;
-            padding: 25px 30px;
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            position: relative;
-            backdrop-filter: blur(10px);
+        .sidebar-header {
+            padding: 25px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(26, 23, 23, 0.1);
+            background: rgba(19, 17, 17, 0.1);
+            backdrop-filter: blur(5px);
         }
 
-        .cyber-header::before {
-            content: '';
-            position: absolute;
-            top: -1px;
-            left: -1px;
-            right: -1px;
-            height: 2px;
-            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple), var(--neon-pink));
-            border-radius: var(--radius) var(--radius) 0 0;
-        }
-
-        .cyber-header h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 2.2rem;
-            font-weight: 700;
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-green));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .cyber-user-info {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .cyber-avatar {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--dark-bg);
-            font-weight: bold;
-            font-size: 1.4rem;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .cyber-avatar::before {
-            content: '';
-            position: absolute;
-            top: -2px;
-            left: -2px;
-            right: -2px;
-            bottom: -2px;
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple), var(--neon-pink), var(--neon-green));
-            border-radius: 50%;
-            z-index: -1;
-            animation: rotate 3s linear infinite;
-        }
-
-        @keyframes rotate {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .cyber-logout {
-            background: transparent;
-            color: var(--neon-pink);
-            border: 1px solid var(--neon-pink);
-            padding: 12px 25px;
-            border-radius: 25px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: var(--transition);
+        .sidebar-header h2 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
             font-weight: 600;
-            text-decoration: none;
-            position: relative;
-            overflow: hidden;
         }
 
-        .cyber-logout:hover {
-            background: var(--neon-pink);
-            color: var(--dark-bg);
-            box-shadow: var(--glow-pink);
+        .sidebar-header p {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            font-weight: 300;
         }
 
-        /* Stats Grid */
-        .cyber-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 25px;
-            margin-bottom: 40px;
+        .sidebar-menu {
+            padding: 20px 0;
         }
 
-        .cyber-stat-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            padding: 30px;
-            position: relative;
-            overflow: hidden;
+        .menu-item {
+            padding: 15px 25px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
             transition: var(--transition);
-            backdrop-filter: blur(10px);
-        }
-
-        .cyber-stat-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--neon-blue);
-            box-shadow: var(--glow-blue);
-        }
-
-        .cyber-stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
-        }
-
-        .stat-icon {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2rem;
-            margin-bottom: 20px;
-            position: relative;
-        }
-
-        .stat-icon::before {
-            content: '';
-            position: absolute;
-            top: -2px;
-            left: -2px;
-            right: -2px;
-            bottom: -2px;
-            background: conic-gradient(from 0deg, var(--neon-blue), var(--neon-purple), var(--neon-pink), var(--neon-blue));
-            border-radius: 50%;
-            z-index: -1;
-            animation: rotate 3s linear infinite;
-        }
-
-        .stat-icon i {
-            background: var(--card-bg);
-            width: 66px;
-            height: 66px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .cyber-stat-info h3 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-green));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-        }
-
-        .cyber-stat-info p {
-            color: var(--text-secondary);
-            font-size: 1rem;
+            margin: 5px 15px;
+            border-radius: 12px;
             font-weight: 500;
         }
 
-        /* Cyber Sections */
-        .cyber-section {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            padding: 30px;
-            margin-bottom: 30px;
-            position: relative;
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .menu-item.active {
+            background: rgba(255, 255, 255, 0.2);
+            border-left: 4px solid var(--accent-pink);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .menu-item i {
+            margin-right: 12px;
+            font-size: 1.2rem;
+            width: 24px;
+            text-align: center;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin-left: 280px;
+            transition: var(--transition);
+        }
+
+        .top-nav {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
             backdrop-filter: blur(10px);
-        }
-
-        .cyber-section::before {
-            content: '';
-            position: absolute;
+            position: sticky;
             top: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+            z-index: 99;
         }
 
-        .cyber-section h2 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.6rem;
-            margin-bottom: 25px;
-            color: var(--neon-blue);
+        .user-info {
             display: flex;
             align-items: center;
             gap: 12px;
-        }
-
-        /* Cyber Table */
-        .cyber-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: rgba(10, 10, 15, 0.6);
-            border-radius: var(--radius);
-            overflow: hidden;
-            border: 1px solid var(--card-border);
-        }
-
-        .cyber-table th {
-            background: linear-gradient(45deg, var(--neon-blue), var(--neon-purple));
-            color: var(--dark-bg);
-            font-weight: 600;
-            padding: 20px;
-            text-align: left;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 0.9rem;
-        }
-
-        .cyber-table td {
-            padding: 20px;
-            border-bottom: 1px solid var(--card-border);
-            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.6);
+            padding: 8px 15px;
+            border-radius: 50px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
             transition: var(--transition);
+            position: relative;
         }
 
-        .cyber-table tr:hover td {
-            background: rgba(0, 243, 255, 0.05);
-            color: var(--text-primary);
+        .user-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
         }
 
-        /* Cyber Buttons */
-        .cyber-btn {
-            padding: 14px 28px;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            display: inline-flex;
+        .user-info img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid var(--primary-blue);
+        }
+
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            padding: 10px 0;
+            min-width: 180px;
+            z-index: 101;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .user-dropdown.active {
+            display: block;
+        }
+
+        .user-dropdown-item {
+            padding: 12px 20px;
+            display: flex;
             align-items: center;
             gap: 10px;
             transition: var(--transition);
-            text-decoration: none;
-            font-family: 'Rajdhani', sans-serif;
-            position: relative;
-            overflow: hidden;
-            background: transparent;
-            color: var(--text-primary);
-            border: 1px solid;
+            cursor: pointer;
         }
 
-        .cyber-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        .user-dropdown-item:hover {
+            background: rgba(67, 97, 238, 0.1);
+        }
+
+        .user-dropdown-item i {
+            color: var(--primary-blue);
+            width: 20px;
+        }
+
+        .content {
+            padding: 30px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* Card Styles */
+        .card {
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
             transition: var(--transition);
         }
 
-        .cyber-btn:hover::before {
-            left: 100%;
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
         }
 
-        .cyber-btn-primary {
-            border-color: var(--neon-blue);
-            color: var(--neon-blue);
+        .card-header {
+            padding: 20px 25px;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .cyber-btn-primary:hover {
-            background: var(--neon-blue);
-            color: var(--dark-bg);
-            box-shadow: var(--glow-blue);
+        .card-body {
+            padding: 25px;
         }
 
-        .cyber-btn-success {
-            border-color: var(--neon-green);
-            color: var(--neon-green);
+        /* Stats Cards */
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
         }
 
-        .cyber-btn-success:hover {
-            background: var(--neon-green);
-            color: var(--dark-bg);
-            box-shadow: var(--glow-blue);
+        .stat-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: var(--shadow);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            transition: var(--transition);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 180px;
         }
 
-        .cyber-btn-danger {
-            border-color: var(--neon-pink);
-            color: var(--neon-pink);
+        .stat-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
         }
 
-        .cyber-btn-danger:hover {
-            background: var(--neon-pink);
-            color: var(--dark-bg);
-            box-shadow: var(--glow-pink);
+        .stat-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: linear-gradient(to bottom, var(--primary-blue), var(--accent-pink));
+        }
+
+        .stat-card i {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-card h3 {
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+            font-weight: 700;
+            color: var(--dark-navy);
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-card p {
+            font-size: 0.9rem;
+            color: #666;
+            font-weight: 500;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat-card .bg-icon {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            font-size: 5rem;
+            opacity: 0.1;
+            color: var(--primary-blue);
+            z-index: 0;
+        }
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 15px 20px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+
+        tr {
+            transition: var(--transition);
+        }
+
+        tr:hover {
+            background-color: rgba(67, 97, 238, 0.05);
+            transform: translateX(5px);
+        }
+
+        /* Badge Styles */
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background: rgba(40, 167, 69, 0.15);
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: rgba(255, 193, 7, 0.15);
+            color: #856404;
+        }
+
+        .badge-danger {
+            background: rgba(220, 53, 69, 0.15);
+            color: var(--danger);
+        }
+
+        .badge-info {
+            background: rgba(23, 162, 184, 0.15);
+            color: var(--info);
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--dark-navy);
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: var(--transition);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
+            transform: translateY(-2px);
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #3a56e4 0%, #2d0a8c 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success) 0%, #1e7e34 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger) 0%, #a71e2a 100%);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning) 0%, #e0a800 100%);
+            color: black;
         }
 
         .action-buttons {
             display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
+            gap: 8px;
         }
 
-        .action-btn {
-            padding: 10px 18px;
-            border-radius: 20px;
+        .action-buttons button {
+            padding: 8px 12px;
             font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: var(--transition);
         }
 
-        /* Role Badges */
-        .cyber-badge {
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .badge-admin {
-            background: rgba(255, 42, 109, 0.2);
-            color: var(--neon-pink);
-            border: 1px solid rgba(255, 42, 109, 0.3);
-        }
-
-        .badge-staff {
-            background: rgba(0, 243, 255, 0.2);
-            color: var(--neon-blue);
-            border: 1px solid rgba(0, 243, 255, 0.3);
-        }
-
-        .badge-student {
-            background: rgba(0, 255, 159, 0.2);
-            color: var(--neon-green);
-            border: 1px solid rgba(0, 255, 159, 0.3);
-        }
-
-        /* Cyber Modal */
-        .cyber-modal {
-            display: none;
+        /* Modal Styles */
+        .modal-overlay {
             position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(5, 5, 8, 0.9);
-            backdrop-filter: blur(10px);
-        }
-
-        .cyber-modal-content {
-            background: var(--card-bg);
-            margin: 5% auto;
-            padding: 40px;
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            width: 90%;
-            max-width: 600px;
-            position: relative;
-            animation: cyberSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        @keyframes cyberSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-50px) scale(0.9);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        .cyber-modal-content::before {
-            content: '';
-            position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-
-        .modal-header h3 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.5rem;
-            color: var(--neon-blue);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .cyber-close {
-            color: var(--text-secondary);
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: var(--transition);
-            width: 40px;
-            height: 40px;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 50%;
-        }
-
-        .cyber-close:hover {
-            color: var(--neon-pink);
-            background: rgba(255, 42, 109, 0.1);
-        }
-
-        .cyber-form-group {
-            margin-bottom: 25px;
-        }
-
-        .cyber-form-group label {
-            display: block;
-            margin-bottom: 10px;
-            font-weight: 600;
-            color: var(--neon-blue);
-            font-size: 0.95rem;
-        }
-
-        .cyber-form-group input,
-        .cyber-form-group select {
-            width: 100%;
-            padding: 15px 20px;
-            background: rgba(10, 10, 15, 0.6);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            color: var(--text-primary);
-            font-size: 1rem;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
             transition: var(--transition);
-            font-family: 'Rajdhani', sans-serif;
         }
 
-        .cyber-form-group input:focus,
-        .cyber-form-group select:focus {
-            outline: none;
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 0 2px rgba(0, 243, 255, 0.2);
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
         }
 
-        .modal-buttons {
+        .modal {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: translateY(30px);
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .modal-overlay.active .modal {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 16px 16px 0 0;
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .modal-footer {
+            padding: 20px 25px;
             display: flex;
             justify-content: flex-end;
-            gap: 15px;
-            margin-top: 30px;
+            gap: 10px;
+            border-top: 1px solid #e0e0e0;
         }
 
-        /* Alert */
-        .cyber-alert {
-            padding: 20px 25px;
-            border-radius: var(--radius);
-            margin-bottom: 25px;
+        /* Chatbot Styles */
+        .chatbot-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            height: 500px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             display: flex;
+            flex-direction: column;
+            z-index: 1000;
+            overflow: hidden;
+            display: none;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .chatbot-container.active {
+            display: flex;
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .chatbot-header {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
             align-items: center;
+        }
+
+        .chatbot-body {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
             gap: 15px;
-            font-weight: 500;
-            border: 1px solid;
-            border-left: 4px solid;
         }
 
-        .alert-success {
-            background: rgba(0, 255, 159, 0.1);
-            border-color: var(--neon-green);
-            color: var(--neon-green);
+        .chatbot-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
         }
 
-        /* Responsive */
-        @media (max-width: 1200px) {
-            .dashboard-container {
-                grid-template-columns: 1fr;
+        .chatbot-footer input {
+            flex: 1;
+            margin-right: 0;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
             }
-            
-            .cyber-sidebar {
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .user-message {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+
+        .bot-message {
+            background: #f1f1f1;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+
+        .chatbot-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            transition: var(--transition);
+        }
+
+        .chatbot-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .tab-container {
+            display: flex;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 12px;
+            padding: 5px;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: var(--transition);
+            font-weight: 500;
+            flex: 1;
+            text-align: center;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            box-shadow: 0 4px 10px rgba(67, 97, 238, 0.3);
+        }
+
+        .tab-content {
+            display: none;
+            animation: slideIn 0.4s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .search-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .search-container input {
+            flex: 1;
+        }
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background: linear-gradient(135deg, var(--success) 0%, #1e7e34 100%);
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            z-index: 1002;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            animation: bounceIn 0.5s ease;
+        }
+
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+
+            70% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .notification.error {
+            background: linear-gradient(135deg, var(--danger) 0%, #a71e2a 100%);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 80px;
+                overflow: visible;
+            }
+
+            .sidebar-header h2,
+            .sidebar-header p,
+            .menu-item span {
                 display: none;
+            }
+
+            .menu-item {
+                justify-content: center;
+                padding: 15px;
+            }
+
+            .menu-item i {
+                margin-right: 0;
+                font-size: 1.4rem;
+            }
+
+            .main-content {
+                margin-left: 80px;
+            }
+
+            .stats-container {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             }
         }
 
         @media (max-width: 768px) {
-            .cyber-main {
-                padding: 20px 15px;
+            .sidebar {
+                transform: translateX(-100%);
             }
-            
-            .cyber-header {
-                flex-direction: column;
-                gap: 20px;
-                align-items: flex-start;
+
+            .sidebar.active {
+                transform: translateX(0);
             }
-            
-            .cyber-stats {
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .stats-container {
                 grid-template-columns: 1fr;
             }
-            
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .search-container {
+                flex-direction: column;
+            }
+
             .action-buttons {
                 flex-direction: column;
             }
-            
-            .cyber-modal-content {
-                padding: 25px;
-                margin: 10% auto;
+
+            .chatbot-container {
+                width: calc(100% - 40px);
+                height: 70vh;
+            }
+
+            .top-nav {
+                padding: 15px 20px;
+            }
+
+            .content {
+                padding: 20px;
             }
         }
-        /* Chatbot Styles */
-        .chatbot-container {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 1000;
-        }
 
-        .chatbot-icon {
-            width: 70px;
-            height: 70px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
-            animation: float 3s ease-in-out infinite;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .chatbot-icon::before {
-            content: '';
-            position: absolute;
-            top: -2px;
-            left: -2px;
-            right: -2px;
-            bottom: -2px;
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57, #ff9ff3, #54a0ff);
-            border-radius: 50%;
-            z-index: -1;
-            animation: rotate 3s linear infinite;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .chatbot-icon:hover::before {
-            opacity: 1;
-        }
-
-        .chatbot-icon i {
-            color: white;
-            font-size: 28px;
-            z-index: 1;
-        }
-
-        .chatbot-icon:hover {
-            transform: scale(1.1) rotate(10deg);
-            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4);
-        }
-
-        .chatbot-pulse {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            background: inherit;
-            animation: pulse 2s infinite;
-        }
-
-        .chatbot-notification {
-            position: absolute;
-            top: -5px;
-            right: -5px;
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
             width: 20px;
             height: 20px;
-            background: #ff4757;
+            border: 3px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 12px;
-            font-weight: bold;
-            animation: bounce 1s infinite;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
         }
 
-        /* Chatbot Modal */
-        .chatbot-container {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 1000;
-        }
-
-        .chatbot-icon {
-            width: 70px;
-            height: 70px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
-            animation: float 3s ease-in-out infinite;
-            position: relative;
-            overflow: hidden;
-            text-decoration: none;
-        }
-
-        .chatbot-icon::before {
-            content: '';
-            position: absolute;
-            top: -2px;
-            left: -2px;
-            right: -2px;
-            bottom: -2px;
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57, #ff9ff3, #54a0ff);
-            border-radius: 50%;
-            z-index: -1;
-            animation: rotate 3s linear infinite;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .chatbot-icon:hover::before {
-            opacity: 1;
-        }
-
-        .chatbot-icon i {
-            color: white;
-            font-size: 28px;
-            z-index: 1;
-        }
-
-        .chatbot-icon:hover {
-            transform: scale(1.1) rotate(10deg);
-            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4);
-        }
-
-        .chatbot-pulse {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            background: inherit;
-            animation: pulse 2s infinite;
-        }
-
-        .chatbot-notification {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            width: 20px;
-            height: 20px;
-            background: #ff4757;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 12px;
-            font-weight: bold;
-            animation: bounce 1s infinite;
-        }
-
-        /* Tooltip */
-        .chatbot-tooltip {
-            position: absolute;
-            bottom: 100%;
-            right: 0;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            white-space: nowrap;
-            margin-bottom: 10px;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.3s ease;
-            pointer-events: none;
-        }
-
-        .chatbot-tooltip::after {
-            content: '';
-            position: absolute;
-            top: 100%;
-            right: 20px;
-            border: 5px solid transparent;
-            border-top-color: rgba(0, 0, 0, 0.8);
-        }
-
-        .chatbot-icon:hover .chatbot-tooltip {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        /* Animations */
-        @keyframes float {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-10px);
-            }
-        }
-
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-                opacity: 1;
-            }
-            100% {
-                transform: scale(2);
-                opacity: 0;
-            }
-        }
-
-        @keyframes bounce {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.2);
-            }
-        }
-
-        @keyframes rotate {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
+        @keyframes spin {
+            to {
                 transform: rotate(360deg);
+            }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        /* Mobile Menu Toggle */
+        .mobile-menu-toggle {
+            display: none;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #3a0ca3 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 15px;
+            font-size: 1.2rem;
+            margin-right: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-menu-toggle {
+                display: flex;
             }
         }
     </style>
 </head>
 
 <body>
-    <!-- Cyber Grid Background -->
-    <div class="cyber-grid"></div>
-
     <div class="dashboard-container">
-        <!-- Cyber Sidebar -->
-        <div class="cyber-sidebar">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h2><i class="fas fa-terminal"></i> CYBERADMIN</h2>
-                <p>SYSTEM CONTROL PANEL</p>
+                <h2>GSSSIETW</h2>
+                <p>Management Dashboard</p>
             </div>
-            <div class="cyber-menu">
-                <!--<a href="#" class="cyber-menu-item active">
-                    <i class="fas fa-desktop"></i>
-                    <span>DASHBOARD</span>
-                </a>
-                <a href="#" class="cyber-menu-item">
-                    <i class="fas fa-users-cog"></i>
-                    <span>USER MANAGEMENT</span>
-                </a>
-                <a href="#" class="cyber-menu-item">
-                    <i class="fas fa-chart-network"></i>
-                    <span>ANALYTICS</span>
-                </a>
-                <a href="#" class="cyber-menu-item">
-                    <i class="fas fa-shield-alt"></i>
-                    <span>SECURITY</span>
-                </a>
-                <a href="#" class="cyber-menu-item">
-                    <i class="fas fa-cogs"></i>
-                    <span>SYSTEM SETTINGS</span>
-                </a>-->
+            <div class="sidebar-menu">
+                <div class="menu-item active" data-target="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </div>
+                <div class="menu-item" data-target="students">
+                    <i class="fas fa-user-graduate"></i>
+                    <span>Students</span>
+                </div>
+                <div class="menu-item" data-target="staff">
+                    <i class="fas fa-chalkboard-teacher"></i>
+                    <span>Staff</span>
+                </div>
+                <div class="menu-item" data-target="departments">
+                    <i class="fas fa-building"></i>
+                    <span>Departments</span>
+                </div>
+                <div class="menu-item" data-target="admin">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Admin</span>
+                </div>
             </div>
         </div>
 
         <!-- Main Content -->
-        <div class="cyber-main">
-            <div class="cyber-header">
-                <h1><i class="fas fa-terminal"></i> ADMINISTRATOR DASHBOARD</h1>
-                <div class="cyber-user-info">
-                    <div class="cyber-avatar">
-                        <?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?>
-                    </div>
-                    <div>
-                        <div><strong><?php echo htmlspecialchars($_SESSION['username']); ?></strong></div>
-                        <div style="color: var(--neon-green);">ROOT ACCESS</div>
-                    </div>
-                    <a href="logout.php" class="cyber-logout">
-                        <i class="fas fa-power-off"></i> LOGOUT
-                    </a>
-                </div>
-            </div>
-
-            <!-- Cyber Stats -->
-            <div class="cyber-stats">
-                <div class="cyber-stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-users" style="color: var(--neon-blue);"></i>
-                    </div>
-                    <div class="cyber-stat-info">
-                        <h3><?php echo count($users); ?></h3>
-                        <p>TOTAL USERS</p>
-                    </div>
-                </div>
-                <div class="cyber-stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-user-graduate" style="color: var(--neon-green);"></i>
-                    </div>
-                    <div class="cyber-stat-info">
-                        <h3><?php echo count($students); ?></h3>
-                        <p>STUDENTS</p>
-                    </div>
-                </div>
-                <div class="cyber-stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-chalkboard-teacher" style="color: var(--neon-purple);"></i>
-                    </div>
-                    <div class="cyber-stat-info">
-                        <h3><?php echo count($staff); ?></h3>
-                        <p>STAFF MEMBERS</p>
-                    </div>
-                </div>
-                <div class="cyber-stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-building" style="color: var(--neon-pink);"></i>
-                    </div>
-                    <div class="cyber-stat-info">
-                        <h3><?php echo count($dept_stats); ?></h3>
-                        <p>DEPARTMENTS</p>
-                    </div>
-                </div>
-            </div>
-
-            <?php if (isset($success)): ?>
-                <div class="cyber-alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-                </div>
-            <?php endif; ?>
-
-            <!-- Department Statistics -->
-            <div class="cyber-section">
-                <h2><i class="fas fa-chart-pie"></i> DEPARTMENT STATISTICS</h2>
-                <table class="cyber-table">
-                    <thead>
-                        <tr>
-                            <th>DEPARTMENT</th>
-                            <th>STUDENT COUNT</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($dept_stats as $stat): ?>
-                            <tr>
-                                <td><strong><?php echo $stat['department']; ?></strong></td>
-                                <td>
-                                    <span style="color: var(--neon-blue); font-weight: 600;">
-                                        <?php echo $stat['count']; ?> USERS
-                                    </span>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- User Management -->
-            <div class="cyber-section">
-                <h2><i class="fas fa-users-cog"></i> USER MANAGEMENT</h2>
-                <button class="cyber-btn cyber-btn-success" onclick="openAddUserModal()">
-                    <i class="fas fa-user-plus"></i> ADD NEW USER
+        <div class="main-content">
+            <div class="top-nav">
+                <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+                    <i class="fas fa-bars"></i>
                 </button>
-                <table class="cyber-table">
-                    <thead>
-                        <tr>
-                            <th>USER ID</th>
-                            <th>USERNAME</th>
-                            <th>EMAIL</th>
-                            <th>ROLE</th>
-                            <th>ACTIONS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($users as $user): ?>
-                            <tr>
-                                <td><strong>#<?php echo $user['user_id']; ?></strong></td>
-                                <td><?php echo htmlspecialchars($user['username']); ?></td>
-                                <td><?php echo htmlspecialchars($user['email']); ?></td>
-                                <td>
-                                    <span class="cyber-badge <?php echo 'badge-' . $user['role']; ?>">
-                                        <i class="fas fa-<?php echo $user['role'] == 'admin' ? 'crown' : ($user['role'] == 'staff' ? 'chalkboard-teacher' : 'user-graduate'); ?>"></i>
-                                        <?php echo strtoupper($user['role']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <div class="action-buttons">
-                                        <button class="cyber-btn cyber-btn-primary action-btn" onclick="editUser(<?php echo $user['user_id']; ?>)">
-                                            <i class="fas fa-edit"></i> EDIT
-                                        </button>
-                                        <form method="POST" style="display: inline;">
-                                            <input type="hidden" name="delete_user" value="1">
-                                            <input type="hidden" name="user_id" value="<?php echo $user['user_id']; ?>">
-                                            <button type="submit" class="cyber-btn cyber-btn-danger action-btn" onclick="return confirm('CONFIRM USER DELETION?')">
-                                                <i class="fas fa-trash"></i> DELETE
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <h1 id="page-title"> Admin Dashboard</h1>
+                <div class="user-info" id="user-info">
+                    <img src="https://ui-avatars.com/api/?name=Admin+User&background=4361ee&color=fff" alt="User">
+                    <span>Admin User</span>
+                    <i class="fas fa-chevron-down"></i>
+                    <div class="user-dropdown" id="user-dropdown">
+                        <div class="user-dropdown-item">
+                            <i class="fas fa-user"></i>
+                            <span>Profile</span>
+                        </div>
+                        
+                        <div href="logout.php" class="user-dropdown-item" id="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span>Logout</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <!-- Dashboard Tab -->
+                <div id="dashboard" class="tab-content active">
+                    <div class="stats-container">
+                        <div class="stat-card">
+                            <i class="fas fa-user-graduate"></i>
+                            <div class="bg-icon"><i class="fas fa-user-graduate"></i></div>
+                            <h3 id="total-students">0</h3>
+                            <p>Total Students</p>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                            <div class="bg-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+                            <h3 id="total-staff">0</h3>
+                            <p>Total Staff</p>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-building"></i>
+                            <div class="bg-icon"><i class="fas fa-building"></i></div>
+                            <h3 id="total-departments">0</h3>
+                            <p>Departments</p>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-book"></i>
+                            <div class="bg-icon"><i class="fas fa-book"></i></div>
+                            <h3>64</h3>
+                            <p>Courses</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Recent Activities</h3>
+                            <button class="btn-primary">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-container">
+                                <table id="activities-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Activity</th>
+                                            <th>User</th>
+                                            <th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="activities-body">
+                                        <!-- Activities will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Students Tab -->
+                <div id="students" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Student Management</h3>
+                            <button class="btn-primary" id="add-student-btn">
+                                <i class="fas fa-plus"></i> Add Student
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="search-container">
+                                <input type="text" id="student-search" placeholder="Search students...">
+                                <button class="btn-primary" id="search-student-btn">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                            </div>
+                            <div class="table-container">
+                                <table id="students-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Department</th>
+                                            <th>Enrollment Date</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="students-body">
+                                        <!-- Students will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Staff Tab -->
+                <div id="staff" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Staff Management</h3>
+                            <button class="btn-primary" id="add-staff-btn">
+                                <i class="fas fa-plus"></i> Add Staff
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="search-container">
+                                <input type="text" id="staff-search" placeholder="Search staff...">
+                                <button class="btn-primary" id="search-staff-btn">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                            </div>
+                            <div class="table-container">
+                                <table id="staff-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Department</th>
+                                            <th>Position</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="staff-body">
+                                        <!-- Staff will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Departments Tab -->
+                <div id="departments" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Department Management</h3>
+                            <button class="btn-primary" id="add-department-btn">
+                                <i class="fas fa-plus"></i> Add Department
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="search-container">
+                                <input type="text" id="department-search" placeholder="Search departments...">
+                                <button class="btn-primary" id="search-department-btn">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                            </div>
+                            <div class="table-container">
+                                <table id="departments-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Head of Department</th>
+                                            <th>Total Staff</th>
+                                            <th>Total Students</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="departments-body">
+                                        <!-- Departments will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Tab -->
+                <div id="admin" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Admin Management</h3>
+                            <button class="btn-primary" id="add-admin-btn">
+                                <i class="fas fa-plus"></i> Add Admin
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="search-container">
+                                <input type="text" id="admin-search" placeholder="Search admins...">
+                                <button class="btn-primary" id="search-admin-btn">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                            </div>
+                            <div class="table-container">
+                                <table id="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Role</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-body">
+                                        <!-- Admins will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Add User Modal -->
-    <div id="addUserModal" class="cyber-modal">
-        <div class="cyber-modal-content">
+    <!-- Student Modal -->
+    <div class="modal-overlay" id="student-modal">
+        <div class="modal">
             <div class="modal-header">
-                <h3><i class="fas fa-user-plus"></i> ADD NEW USER</h3>
-                <span class="cyber-close" onclick="closeAddUserModal()">&times;</span>
+                <h3 id="student-form-title">Add New Student</h3>
+                <button class="close-modal"><i class="fas fa-times"></i></button>
             </div>
-            <form method="POST">
-                <input type="hidden" name="add_user" value="1">
-                <div class="cyber-form-group">
-                    <label>USERNAME:</label>
-                    <input type="text" name="username" required placeholder="ENTER USERNAME">
-                </div>
-                <div class="cyber-form-group">
-                    <label>EMAIL:</label>
-                    <input type="email" name="email" required placeholder="ENTER EMAIL ADDRESS">
-                </div>
-                <div class="cyber-form-group">
-                    <label>PASSWORD:</label>
-                    <input type="password" name="password" required placeholder="ENTER PASSWORD">
-                </div>
-                <div class="cyber-form-group">
-                    <label>ROLE:</label>
-                    <select name="role" id="roleSelect" onchange="toggleRoleFields()" required>
-                        <option value="">SELECT ROLE</option>
-                        <option value="student">STUDENT</option>
-                        <option value="staff">STAFF</option>
-                        <option value="admin">ADMIN</option>
-                    </select>
-                </div>
-
-                <div id="studentFields">
-                    <div class="cyber-form-group">
-                        <label>FULL NAME:</label>
-                        <input type="text" name="name" placeholder="ENTER FULL NAME">
+            <div class="modal-body">
+                <form id="student-form">
+                    <input type="hidden" id="student-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="student-name">Full Name</label>
+                            <input type="text" id="student-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="student-email">Email</label>
+                            <input type="email" id="student-email" required>
+                        </div>
                     </div>
-                    <div class="cyber-form-group">
-                        <label>DEPARTMENT:</label>
-                        <input type="text" name="department" placeholder="ENTER DEPARTMENT">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="student-department">Department</label>
+                            <select id="student-department" required>
+                                <option value="">Select Department</option>
+                                <option value="Computer Science">Computer Science</option>
+                                <option value="Electrical Engineering">Electrical Engineering</option>
+                                <option value="Mechanical Engineering">Mechanical Engineering</option>
+                                <option value="Business Administration">Business Administration</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="student-enrollment">Enrollment Date</label>
+                            <input type="date" id="student-enrollment" required>
+                        </div>
                     </div>
-                    <div class="cyber-form-group">
-                        <label>SEMESTER:</label>
-                        <input type="number" name="semester" min="1" max="8" placeholder="ENTER SEMESTER">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="student-phone">Phone</label>
+                            <input type="tel" id="student-phone">
+                        </div>
+                        <div class="form-group">
+                            <label for="student-address">Address</label>
+                            <input type="text" id="student-address">
+                        </div>
                     </div>
-                </div>
-
-                <div id="staffFields">
-                    <div class="cyber-form-group">
-                        <label>FULL NAME:</label>
-                        <input type="text" name="name" placeholder="ENTER FULL NAME">
-                    </div>
-                    <div class="cyber-form-group">
-                        <label>DEPARTMENT:</label>
-                        <input type="text" name="department" placeholder="ENTER DEPARTMENT">
-                    </div>
-                    <div class="cyber-form-group">
-                        <label>DESIGNATION:</label>
-                        <input type="text" name="designation" placeholder="ENTER DESIGNATION">
-                    </div>
-                </div>
-
-                <div class="modal-buttons">
-                    <button type="button" class="cyber-btn cyber-btn-danger" onclick="closeAddUserModal()">
-                        <i class="fas fa-times"></i> CANCEL
-                    </button>
-                    <button type="submit" class="cyber-btn cyber-btn-success">
-                        <i class="fas fa-check"></i> ADD USER
-                    </button>
-                </div>
-            </form>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-danger close-modal">Cancel</button>
+                <button type="submit" form="student-form" class="btn-success">Save Student</button>
+            </div>
         </div>
+    </div>
+
+    <!-- Staff Modal -->
+    <div class="modal-overlay" id="staff-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="staff-form-title">Add New Staff</h3>
+                <button class="close-modal"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="staff-form">
+                    <input type="hidden" id="staff-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="staff-name">Full Name</label>
+                            <input type="text" id="staff-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="staff-email">Email</label>
+                            <input type="email" id="staff-email" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="staff-department">Department</label>
+                            <select id="staff-department" required>
+                                <option value="">Select Department</option>
+                                <option value="Computer Science">Computer Science</option>
+                                <option value="Electrical Engineering">Electrical Engineering</option>
+                                <option value="Mechanical Engineering">Mechanical Engineering</option>
+                                <option value="Business Administration">Business Administration</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="staff-position">Position</label>
+                            <input type="text" id="staff-position" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="staff-hire-date">Hire Date</label>
+                            <input type="date" id="staff-hire-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="staff-phone">Phone</label>
+                            <input type="tel" id="staff-phone">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="staff-address">Address</label>
+                        <input type="text" id="staff-address">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-danger close-modal">Cancel</button>
+                <button type="submit" form="staff-form" class="btn-success">Save Staff</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Department Modal -->
+    <div class="modal-overlay" id="department-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="department-form-title">Add New Department</h3>
+                <button class="close-modal"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="department-form">
+                    <input type="hidden" id="department-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="department-name">Department Name</label>
+                            <input type="text" id="department-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="department-head">Head of Department</label>
+                            <select id="department-head" required>
+                                <option value="">Select Head</option>
+                                <!-- Staff options will be populated here -->
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="department-budget">Budget ($)</label>
+                            <input type="number" id="department-budget" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="department-phone">Phone</label>
+                            <input type="tel" id="department-phone">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="department-description">Description</label>
+                        <textarea id="department-description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-danger close-modal">Cancel</button>
+                <button type="submit" form="department-form" class="btn-success">Save Department</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Modal -->
+    <div class="modal-overlay" id="admin-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="admin-form-title">Add New Admin</h3>
+                <button class="close-modal"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="admin-form">
+                    <input type="hidden" id="admin-id">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="admin-name">Full Name</label>
+                            <input type="text" id="admin-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-email">Email</label>
+                            <input type="email" id="admin-email" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="admin-role">Role</label>
+                            <select id="admin-role" required>
+                                <option value="">Select Role</option>
+                                <option value="Super Admin">Super Admin</option>
+                                <option value="Admin">Admin</option>
+                                <option value="Moderator">Moderator</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-permissions">Permissions</label>
+                            <select id="admin-permissions" multiple>
+                                <option value="students">Manage Students</option>
+                                <option value="staff">Manage Staff</option>
+                                <option value="departments">Manage Departments</option>
+                                <option value="admin">Manage Admins</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="admin-phone">Phone</label>
+                            <input type="tel" id="admin-phone">
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-address">Address</label>
+                            <input type="text" id="admin-address">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-danger close-modal">Cancel</button>
+                <button type="submit" form="admin-form" class="btn-success">Save Admin</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chatbot -->
+    <div class="chatbot-toggle" id="chatbot-toggle">
+        <i class="fas fa-robot"></i>
+    </div>
+
+    <div class="chatbot-container" id="chatbot-container">
+        <div class="chatbot-header">
+            <h3>VTU Assistant</h3>
+            <button id="close-chatbot"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="chatbot-body" id="chatbot-body">
+            <div class="message bot-message">
+                Hello! I'm the VTU Assistant. How can I help you today? You can ask me about students, staff,
+                departments, or admins.
+            </div>
+        </div>
+        <div class="chatbot-footer">
+            <input type="text" id="chatbot-input" placeholder="Type your message...">
+            <button class="btn-primary" id="send-message">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <i class="fas fa-check-circle"></i>
+        <span>Operation completed successfully!</span>
     </div>
 
     <script>
-        function openAddUserModal() {
-            document.getElementById('addUserModal').style.display = 'block';
-            document.querySelector('#addUserModal form').reset();
-            document.getElementById('studentFields').style.display = 'none';
-            document.getElementById('staffFields').style.display = 'none';
-        }
+        // Database simulation
+        const database = {
+            students: [
+                { id: 'ST001', name: 'John Smith', email: 'john.smith@vtu.edu', department: 'Computer Science', enrollmentDate: '2022-09-01', phone: '555-1234', address: '123 Main St', status: 'Active' },
+                { id: 'ST002', name: 'Emily Johnson', email: 'emily.johnson@vtu.edu', department: 'Electrical Engineering', enrollmentDate: '2021-09-01', phone: '555-5678', address: '456 Oak Ave', status: 'Active' },
+                { id: 'ST003', name: 'Michael Brown', email: 'michael.brown@vtu.edu', department: 'Mechanical Engineering', enrollmentDate: '2023-01-15', phone: '555-9012', address: '789 Pine Rd', status: 'Inactive' }
+            ],
+            staff: [
+                { id: 'SF001', name: 'Dr. Robert Wilson', email: 'robert.wilson@vtu.edu', department: 'Computer Science', position: 'Professor', hireDate: '2015-08-15', phone: '555-3456', address: '321 Elm St', status: 'Active' },
+                { id: 'SF002', name: 'Dr. Sarah Davis', email: 'sarah.davis@vtu.edu', department: 'Electrical Engineering', position: 'Associate Professor', hireDate: '2018-03-20', phone: '555-7890', address: '654 Maple Ave', status: 'Active' },
+                { id: 'SF003', name: 'Dr. James Miller', email: 'james.miller@vtu.edu', department: 'Mechanical Engineering', position: 'Assistant Professor', hireDate: '2020-01-10', phone: '555-2345', address: '987 Cedar Ln', status: 'On Leave' }
+            ],
+            departments: [
+                { id: 'DP001', name: 'Computer Science', head: 'Dr. Robert Wilson', staffCount: 25, studentCount: 350, budget: 1500000, phone: '555-1111', description: 'Department of Computer Science and Engineering', status: 'Active' },
+                { id: 'DP002', name: 'Electrical Engineering', head: 'Dr. Sarah Davis', staffCount: 18, studentCount: 280, budget: 1200000, phone: '555-2222', description: 'Department of Electrical and Electronics Engineering', status: 'Active' },
+                { id: 'DP003', name: 'Mechanical Engineering', head: 'Dr. James Miller', staffCount: 22, studentCount: 320, budget: 1350000, phone: '555-3333', description: 'Department of Mechanical Engineering', status: 'Active' },
+                { id: 'DP004', name: 'Business Administration', head: 'Dr. Lisa Anderson', staffCount: 15, studentCount: 240, budget: 900000, phone: '555-4444', description: 'Department of Business Administration and Management', status: 'Inactive' }
+            ],
+            admins: [
+                { id: 'AD001', name: 'Admin User', email: 'admin@vtu.edu', role: 'Super Admin', permissions: ['students', 'staff', 'departments', 'admin'], lastLogin: '2023-10-15', status: 'Active' },
+                { id: 'AD002', name: 'Moderator User', email: 'moderator@vtu.edu', role: 'Moderator', permissions: ['students', 'staff'], lastLogin: '2023-10-14', status: 'Active' }
+            ],
+            activities: [
+                { date: '2023-10-15', activity: 'New Student Registration', user: 'John Smith', details: 'Computer Science Department' },
+                { date: '2023-10-14', activity: 'Staff Update', user: 'Dr. Emily Johnson', details: 'Promoted to Department Head' },
+                { date: '2023-10-13', activity: 'Course Added', user: 'Admin', details: 'Advanced Data Structures' },
+                { date: '2023-10-12', activity: 'Department Created', user: 'Admin', details: 'Artificial Intelligence' }
+            ]
+        };
 
-        function closeAddUserModal() {
-            document.getElementById('addUserModal').style.display = 'none';
-        }
+        // DOM Elements
+        const menuItems = document.querySelectorAll('.menu-item');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const pageTitle = document.getElementById('page-title');
+        const sidebar = document.getElementById('sidebar');
+        const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+        const userInfo = document.getElementById('user-info');
+        const userDropdown = document.getElementById('user-dropdown');
+        const logoutBtn = document.getElementById('logout-btn');
 
-        function toggleRoleFields() {
-            var role = document.getElementById('roleSelect').value;
-            document.getElementById('studentFields').style.display = 'none';
-            document.getElementById('staffFields').style.display = 'none';
+        // Modals
+        const studentModal = document.getElementById('student-modal');
+        const staffModal = document.getElementById('staff-modal');
+        const departmentModal = document.getElementById('department-modal');
+        const adminModal = document.getElementById('admin-modal');
+        const closeModalButtons = document.querySelectorAll('.close-modal');
 
-            if (role === 'student') {
-                document.getElementById('studentFields').style.display = 'block';
-            } else if (role === 'staff') {
-                document.getElementById('staffFields').style.display = 'block';
-            }
-        }
+        // Students
+        const addStudentBtn = document.getElementById('add-student-btn');
+        const studentForm = document.getElementById('student-form');
+        const studentsBody = document.getElementById('students-body');
+        const studentSearch = document.getElementById('student-search');
+        const searchStudentBtn = document.getElementById('search-student-btn');
 
-        function editUser(userId) {
-            window.location.href = 'edit_user.php?id=' + userId;
-        }
+        // Staff
+        const addStaffBtn = document.getElementById('add-staff-btn');
+        const staffForm = document.getElementById('staff-form');
+        const staffBody = document.getElementById('staff-body');
+        const staffSearch = document.getElementById('staff-search');
+        const searchStaffBtn = document.getElementById('search-staff-btn');
 
-        // Close modal when clicking outside
-        window.onclick = function (event) {
-            const modal = document.getElementById('addUserModal');
-            if (event.target == modal) closeAddUserModal();
-        }
+        // Departments
+        const addDepartmentBtn = document.getElementById('add-department-btn');
+        const departmentForm = document.getElementById('department-form');
+        const departmentsBody = document.getElementById('departments-body');
+        const departmentSearch = document.getElementById('department-search');
+        const searchDepartmentBtn = document.getElementById('search-department-btn');
 
-        // Close modal with Escape key
-        document.addEventListener('keydown', function (event) {
-            if (event.key === 'Escape') {
-                closeAddUserModal();
-            }
+        // Admin
+        const addAdminBtn = document.getElementById('add-admin-btn');
+        const adminForm = document.getElementById('admin-form');
+        const adminBody = document.getElementById('admin-body');
+        const adminSearch = document.getElementById('admin-search');
+        const searchAdminBtn = document.getElementById('search-admin-btn');
+
+        // Chatbot
+        const chatbotToggle = document.getElementById('chatbot-toggle');
+        const chatbotContainer = document.getElementById('chatbot-container');
+        const closeChatbot = document.getElementById('close-chatbot');
+        const chatbotBody = document.getElementById('chatbot-body');
+        const chatbotInput = document.getElementById('chatbot-input');
+        const sendMessage = document.getElementById('send-message');
+
+        // Notification
+        const notification = document.getElementById('notification');
+
+        // Initialize the dashboard
+        document.addEventListener('DOMContentLoaded', function () {
+            updateStats();
+            loadStudents();
+            loadStaff();
+            loadDepartments();
+            loadAdmins();
+            loadActivities();
+
+            // Set up event listeners for navigation
+            menuItems.forEach(item => {
+                item.addEventListener('click', function () {
+                    const target = this.getAttribute('data-target');
+
+                    // Update active menu item
+                    menuItems.forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Show corresponding tab
+                    tabContents.forEach(tab => tab.classList.remove('active'));
+                    document.getElementById(target).classList.add('active');
+
+                    // Update page title
+                    pageTitle.textContent = this.querySelector('span').textContent;
+
+                    // Close sidebar on mobile after selection
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('active');
+                    }
+                });
+            });
+
+            // Mobile menu toggle
+            mobileMenuToggle.addEventListener('click', function () {
+                sidebar.classList.toggle('active');
+            });
+
+            // User dropdown toggle
+            userInfo.addEventListener('click', function (e) {
+                e.stopPropagation();
+                userDropdown.classList.toggle('active');
+            });
+
+            // Close dropdown when clicking elsewhere
+            document.addEventListener('click', function () {
+                userDropdown.classList.remove('active');
+            });
+
+            // Logout functionality
+            logoutBtn.addEventListener('click', function () {
+                if (confirm('Are you sure you want to logout?')) {
+                    showNotification('Logging out...', 'success');
+                    setTimeout(() => {
+                        alert('You have been logged out successfully!');
+                        // In a real application, you would redirect to login page
+                        // window.location.href = 'login.html';
+                    }, 1000);
+                }
+            });
+
+            // Modal close buttons
+            closeModalButtons.forEach(button => {
+                button.addEventListener('click', function () {
+                    const modal = this.closest('.modal-overlay');
+                    modal.classList.remove('active');
+                });
+            });
+
+            // Close modal when clicking outside
+            document.querySelectorAll('.modal-overlay').forEach(modal => {
+                modal.addEventListener('click', function (e) {
+                    if (e.target === this) {
+                        this.classList.remove('active');
+                    }
+                });
+            });
+
+            // Students event listeners
+            addStudentBtn.addEventListener('click', () => showModal(studentModal, 'Add New Student'));
+            studentForm.addEventListener('submit', saveStudent);
+            searchStudentBtn.addEventListener('click', searchStudents);
+
+            // Staff event listeners
+            addStaffBtn.addEventListener('click', () => showModal(staffModal, 'Add New Staff'));
+            staffForm.addEventListener('submit', saveStaff);
+            searchStaffBtn.addEventListener('click', searchStaff);
+
+            // Departments event listeners
+            addDepartmentBtn.addEventListener('click', () => showModal(departmentModal, 'Add New Department'));
+            departmentForm.addEventListener('submit', saveDepartment);
+            searchDepartmentBtn.addEventListener('click', searchDepartments);
+
+            // Admin event listeners
+            addAdminBtn.addEventListener('click', () => showModal(adminModal, 'Add New Admin'));
+            adminForm.addEventListener('submit', saveAdmin);
+            searchAdminBtn.addEventListener('click', searchAdmins);
+
+            // Chatbot event listeners
+            chatbotToggle.addEventListener('click', toggleChatbot);
+            closeChatbot.addEventListener('click', toggleChatbot);
+            sendMessage.addEventListener('click', sendChatMessage);
+            chatbotInput.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    sendChatMessage();
+                }
+            });
+
+            // Animate stats counting
+            animateStats();
         });
-        // Chatbot functionality
-        let chatbotOpen = false;
 
+        // Modal functions
+        function showModal(modal, title) {
+            const titleElement = modal.querySelector('h3');
+            titleElement.textContent = title;
+            modal.classList.add('active');
+        }
+
+        // Update dashboard statistics
+        function updateStats() {
+            document.getElementById('total-students').textContent = database.students.length;
+            document.getElementById('total-staff').textContent = database.staff.length;
+            document.getElementById('total-departments').textContent = database.departments.length;
+        }
+
+        // Animate stats counting
+        function animateStats() {
+            const statElements = [
+                { element: document.getElementById('total-students'), target: database.students.length },
+                { element: document.getElementById('total-staff'), target: database.staff.length },
+                { element: document.getElementById('total-departments'), target: database.departments.length }
+            ];
+
+            statElements.forEach(stat => {
+                let current = 0;
+                const increment = stat.target / 50;
+                const timer = setInterval(() => {
+                    current += increment;
+                    if (current >= stat.target) {
+                        stat.element.textContent = stat.target;
+                        clearInterval(timer);
+                    } else {
+                        stat.element.textContent = Math.floor(current);
+                    }
+                }, 30);
+            });
+        }
+
+        // Load students into the table
+        function loadStudents() {
+            studentsBody.innerHTML = '';
+            if (database.students.length === 0) {
+                studentsBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <i class="fas fa-user-graduate"></i>
+                            <p>No students found</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            database.students.forEach(student => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${student.id}</td>
+                    <td>${student.name}</td>
+                    <td>${student.email}</td>
+                    <td>${student.department}</td>
+                    <td>${student.enrollmentDate}</td>
+                    <td><span class="badge ${student.status === 'Active' ? 'badge-success' : 'badge-warning'}">${student.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-student" data-id="${student.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-student" data-id="${student.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                studentsBody.appendChild(row);
+            });
+
+            // Add event listeners for edit and delete buttons
+            document.querySelectorAll('.edit-student').forEach(button => {
+                button.addEventListener('click', function () {
+                    editStudent(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-student').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteStudent(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Load staff into the table
+        function loadStaff() {
+            staffBody.innerHTML = '';
+            if (database.staff.length === 0) {
+                staffBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                            <p>No staff found</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            database.staff.forEach(staff => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${staff.id}</td>
+                    <td>${staff.name}</td>
+                    <td>${staff.email}</td>
+                    <td>${staff.department}</td>
+                    <td>${staff.position}</td>
+                    <td><span class="badge ${staff.status === 'Active' ? 'badge-success' : staff.status === 'On Leave' ? 'badge-warning' : 'badge-danger'}">${staff.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-staff" data-id="${staff.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-staff" data-id="${staff.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                staffBody.appendChild(row);
+            });
+
+            // Add event listeners for edit and delete buttons
+            document.querySelectorAll('.edit-staff').forEach(button => {
+                button.addEventListener('click', function () {
+                    editStaff(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-staff').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteStaff(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Load departments into the table
+        function loadDepartments() {
+            departmentsBody.innerHTML = '';
+            if (database.departments.length === 0) {
+                departmentsBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <i class="fas fa-building"></i>
+                            <p>No departments found</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            database.departments.forEach(dept => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${dept.id}</td>
+                    <td>${dept.name}</td>
+                    <td>${dept.head}</td>
+                    <td>${dept.staffCount}</td>
+                    <td>${dept.studentCount}</td>
+                    <td><span class="badge ${dept.status === 'Active' ? 'badge-success' : 'badge-warning'}">${dept.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-department" data-id="${dept.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-department" data-id="${dept.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                departmentsBody.appendChild(row);
+            });
+
+            // Add event listeners for edit and delete buttons
+            document.querySelectorAll('.edit-department').forEach(button => {
+                button.addEventListener('click', function () {
+                    editDepartment(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-department').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteDepartment(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Load admins into the table
+        function loadAdmins() {
+            adminBody.innerHTML = '';
+            if (database.admins.length === 0) {
+                adminBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <i class="fas fa-user-shield"></i>
+                            <p>No admins found</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            database.admins.forEach(admin => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${admin.id}</td>
+                    <td>${admin.name}</td>
+                    <td>${admin.email}</td>
+                    <td>${admin.role}</td>
+                    <td><span class="badge badge-success">${admin.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-admin" data-id="${admin.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-admin" data-id="${admin.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                adminBody.appendChild(row);
+            });
+
+            // Add event listeners for edit and delete buttons
+            document.querySelectorAll('.edit-admin').forEach(button => {
+                button.addEventListener('click', function () {
+                    editAdmin(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-admin').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteAdmin(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Load activities into the table
+        function loadActivities() {
+            const activitiesBody = document.getElementById('activities-body');
+            activitiesBody.innerHTML = '';
+            database.activities.forEach(activity => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${activity.date}</td>
+                    <td>${activity.activity}</td>
+                    <td>${activity.user}</td>
+                    <td>${activity.details}</td>
+                `;
+                activitiesBody.appendChild(row);
+            });
+        }
+
+        // Student functions
+        function saveStudent(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('student-id').value;
+            const name = document.getElementById('student-name').value;
+            const email = document.getElementById('student-email').value;
+            const department = document.getElementById('student-department').value;
+            const enrollmentDate = document.getElementById('student-enrollment').value;
+            const phone = document.getElementById('student-phone').value;
+            const address = document.getElementById('student-address').value;
+
+            if (id) {
+                // Update existing student
+                const index = database.students.findIndex(s => s.id === id);
+                if (index !== -1) {
+                    database.students[index] = { ...database.students[index], name, email, department, enrollmentDate, phone, address };
+                    showNotification('Student updated successfully!', 'success');
+                }
+            } else {
+                // Add new student
+                const newId = 'ST' + String(database.students.length + 1).padStart(3, '0');
+                database.students.push({ id: newId, name, email, department, enrollmentDate, phone, address, status: 'Active' });
+                showNotification('Student added successfully!', 'success');
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'New Student Registration',
+                    user: name,
+                    details: department
+                });
+                loadActivities();
+            }
+
+            loadStudents();
+            updateStats();
+            studentModal.classList.remove('active');
+            animateStats();
+        }
+
+        function editStudent(id) {
+            const student = database.students.find(s => s.id === id);
+            if (student) {
+                document.getElementById('student-id').value = student.id;
+                document.getElementById('student-name').value = student.name;
+                document.getElementById('student-email').value = student.email;
+                document.getElementById('student-department').value = student.department;
+                document.getElementById('student-enrollment').value = student.enrollmentDate;
+                document.getElementById('student-phone').value = student.phone;
+                document.getElementById('student-address').value = student.address;
+                showModal(studentModal, 'Edit Student');
+            }
+        }
+
+        function deleteStudent(id) {
+            if (confirm('Are you sure you want to delete this student?')) {
+                database.students = database.students.filter(s => s.id !== id);
+                loadStudents();
+                updateStats();
+                showNotification('Student deleted successfully!', 'success');
+                animateStats();
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'Student Deleted',
+                    user: 'Admin',
+                    details: `Student ID: ${id}`
+                });
+                loadActivities();
+            }
+        }
+
+        function searchStudents() {
+            const query = studentSearch.value.toLowerCase();
+            const filteredStudents = database.students.filter(student =>
+                student.name.toLowerCase().includes(query) ||
+                student.email.toLowerCase().includes(query) ||
+                student.department.toLowerCase().includes(query) ||
+                student.id.toLowerCase().includes(query)
+            );
+
+            studentsBody.innerHTML = '';
+            if (filteredStudents.length === 0) {
+                studentsBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <i class="fas fa-search"></i>
+                            <p>No students match your search</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredStudents.forEach(student => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${student.id}</td>
+                    <td>${student.name}</td>
+                    <td>${student.email}</td>
+                    <td>${student.department}</td>
+                    <td>${student.enrollmentDate}</td>
+                    <td><span class="badge ${student.status === 'Active' ? 'badge-success' : 'badge-warning'}">${student.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-student" data-id="${student.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-student" data-id="${student.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                studentsBody.appendChild(row);
+            });
+
+            // Reattach event listeners
+            document.querySelectorAll('.edit-student').forEach(button => {
+                button.addEventListener('click', function () {
+                    editStudent(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-student').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteStudent(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Staff functions
+        function saveStaff(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('staff-id').value;
+            const name = document.getElementById('staff-name').value;
+            const email = document.getElementById('staff-email').value;
+            const department = document.getElementById('staff-department').value;
+            const position = document.getElementById('staff-position').value;
+            const hireDate = document.getElementById('staff-hire-date').value;
+            const phone = document.getElementById('staff-phone').value;
+            const address = document.getElementById('staff-address').value;
+
+            if (id) {
+                // Update existing staff
+                const index = database.staff.findIndex(s => s.id === id);
+                if (index !== -1) {
+                    database.staff[index] = { ...database.staff[index], name, email, department, position, hireDate, phone, address };
+                    showNotification('Staff updated successfully!', 'success');
+                }
+            } else {
+                // Add new staff
+                const newId = 'SF' + String(database.staff.length + 1).padStart(3, '0');
+                database.staff.push({ id: newId, name, email, department, position, hireDate, phone, address, status: 'Active' });
+                showNotification('Staff added successfully!', 'success');
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'New Staff Added',
+                    user: name,
+                    details: `${position} in ${department}`
+                });
+                loadActivities();
+            }
+
+            loadStaff();
+            updateStats();
+            staffModal.classList.remove('active');
+            animateStats();
+        }
+
+        function editStaff(id) {
+            const staff = database.staff.find(s => s.id === id);
+            if (staff) {
+                document.getElementById('staff-id').value = staff.id;
+                document.getElementById('staff-name').value = staff.name;
+                document.getElementById('staff-email').value = staff.email;
+                document.getElementById('staff-department').value = staff.department;
+                document.getElementById('staff-position').value = staff.position;
+                document.getElementById('staff-hire-date').value = staff.hireDate;
+                document.getElementById('staff-phone').value = staff.phone;
+                document.getElementById('staff-address').value = staff.address;
+                showModal(staffModal, 'Edit Staff');
+            }
+        }
+
+        function deleteStaff(id) {
+            if (confirm('Are you sure you want to delete this staff member?')) {
+                database.staff = database.staff.filter(s => s.id !== id);
+                loadStaff();
+                updateStats();
+                showNotification('Staff deleted successfully!', 'success');
+                animateStats();
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'Staff Deleted',
+                    user: 'Admin',
+                    details: `Staff ID: ${id}`
+                });
+                loadActivities();
+            }
+        }
+
+        function searchStaff() {
+            const query = staffSearch.value.toLowerCase();
+            const filteredStaff = database.staff.filter(staff =>
+                staff.name.toLowerCase().includes(query) ||
+                staff.email.toLowerCase().includes(query) ||
+                staff.department.toLowerCase().includes(query) ||
+                staff.position.toLowerCase().includes(query) ||
+                staff.id.toLowerCase().includes(query)
+            );
+
+            staffBody.innerHTML = '';
+            if (filteredStaff.length === 0) {
+                staffBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <i class="fas fa-search"></i>
+                            <p>No staff match your search</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredStaff.forEach(staff => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${staff.id}</td>
+                    <td>${staff.name}</td>
+                    <td>${staff.email}</td>
+                    <td>${staff.department}</td>
+                    <td>${staff.position}</td>
+                    <td><span class="badge ${staff.status === 'Active' ? 'badge-success' : staff.status === 'On Leave' ? 'badge-warning' : 'badge-danger'}">${staff.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-staff" data-id="${staff.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-staff" data-id="${staff.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                staffBody.appendChild(row);
+            });
+
+            // Reattach event listeners
+            document.querySelectorAll('.edit-staff').forEach(button => {
+                button.addEventListener('click', function () {
+                    editStaff(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-staff').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteStaff(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Department functions
+        function saveDepartment(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('department-id').value;
+            const name = document.getElementById('department-name').value;
+            const head = document.getElementById('department-head').value;
+            const budget = document.getElementById('department-budget').value;
+            const phone = document.getElementById('department-phone').value;
+            const description = document.getElementById('department-description').value;
+
+            if (id) {
+                // Update existing department
+                const index = database.departments.findIndex(d => d.id === id);
+                if (index !== -1) {
+                    database.departments[index] = {
+                        ...database.departments[index],
+                        name, head, budget: parseInt(budget), phone, description
+                    };
+                    showNotification('Department updated successfully!', 'success');
+                }
+            } else {
+                // Add new department
+                const newId = 'DP' + String(database.departments.length + 1).padStart(3, '0');
+                database.departments.push({
+                    id: newId,
+                    name,
+                    head,
+                    staffCount: 0,
+                    studentCount: 0,
+                    budget: parseInt(budget),
+                    phone,
+                    description,
+                    status: 'Active'
+                });
+                showNotification('Department added successfully!', 'success');
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'New Department Created',
+                    user: 'Admin',
+                    details: name
+                });
+                loadActivities();
+            }
+
+            loadDepartments();
+            updateStats();
+            departmentModal.classList.remove('active');
+            animateStats();
+        }
+
+        function editDepartment(id) {
+            const dept = database.departments.find(d => d.id === id);
+            if (dept) {
+                document.getElementById('department-id').value = dept.id;
+                document.getElementById('department-name').value = dept.name;
+                document.getElementById('department-budget').value = dept.budget;
+                document.getElementById('department-phone').value = dept.phone;
+                document.getElementById('department-description').value = dept.description;
+
+                // Populate head of department dropdown with staff
+                const headSelect = document.getElementById('department-head');
+                headSelect.innerHTML = '<option value="">Select Head</option>';
+                database.staff.forEach(staff => {
+                    const option = document.createElement('option');
+                    option.value = staff.name;
+                    option.textContent = staff.name;
+                    option.selected = staff.name === dept.head;
+                    headSelect.appendChild(option);
+                });
+
+                showModal(departmentModal, 'Edit Department');
+            }
+        }
+
+        function deleteDepartment(id) {
+            if (confirm('Are you sure you want to delete this department?')) {
+                database.departments = database.departments.filter(d => d.id !== id);
+                loadDepartments();
+                updateStats();
+                showNotification('Department deleted successfully!', 'success');
+                animateStats();
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'Department Deleted',
+                    user: 'Admin',
+                    details: `Department ID: ${id}`
+                });
+                loadActivities();
+            }
+        }
+
+        function searchDepartments() {
+            const query = departmentSearch.value.toLowerCase();
+            const filteredDepts = database.departments.filter(dept =>
+                dept.name.toLowerCase().includes(query) ||
+                dept.head.toLowerCase().includes(query) ||
+                dept.id.toLowerCase().includes(query)
+            );
+
+            departmentsBody.innerHTML = '';
+            if (filteredDepts.length === 0) {
+                departmentsBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <i class="fas fa-search"></i>
+                            <p>No departments match your search</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredDepts.forEach(dept => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${dept.id}</td>
+                    <td>${dept.name}</td>
+                    <td>${dept.head}</td>
+                    <td>${dept.staffCount}</td>
+                    <td>${dept.studentCount}</td>
+                    <td><span class="badge ${dept.status === 'Active' ? 'badge-success' : 'badge-warning'}">${dept.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-department" data-id="${dept.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-department" data-id="${dept.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                departmentsBody.appendChild(row);
+            });
+
+            // Reattach event listeners
+            document.querySelectorAll('.edit-department').forEach(button => {
+                button.addEventListener('click', function () {
+                    editDepartment(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-department').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteDepartment(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Admin functions
+        function saveAdmin(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('admin-id').value;
+            const name = document.getElementById('admin-name').value;
+            const email = document.getElementById('admin-email').value;
+            const role = document.getElementById('admin-role').value;
+            const permissions = Array.from(document.getElementById('admin-permissions').selectedOptions).map(option => option.value);
+            const phone = document.getElementById('admin-phone').value;
+            const address = document.getElementById('admin-address').value;
+
+            if (id) {
+                // Update existing admin
+                const index = database.admins.findIndex(a => a.id === id);
+                if (index !== -1) {
+                    database.admins[index] = {
+                        ...database.admins[index],
+                        name, email, role, permissions, phone, address
+                    };
+                    showNotification('Admin updated successfully!', 'success');
+                }
+            } else {
+                // Add new admin
+                const newId = 'AD' + String(database.admins.length + 1).padStart(3, '0');
+                database.admins.push({
+                    id: newId,
+                    name,
+                    email,
+                    role,
+                    permissions,
+                    lastLogin: new Date().toISOString().split('T')[0],
+                    phone,
+                    address,
+                    status: 'Active'
+                });
+                showNotification('Admin added successfully!', 'success');
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'New Admin Added',
+                    user: 'Admin',
+                    details: `${name} as ${role}`
+                });
+                loadActivities();
+            }
+
+            loadAdmins();
+            adminModal.classList.remove('active');
+        }
+
+        function editAdmin(id) {
+            const admin = database.admins.find(a => a.id === id);
+            if (admin) {
+                document.getElementById('admin-id').value = admin.id;
+                document.getElementById('admin-name').value = admin.name;
+                document.getElementById('admin-email').value = admin.email;
+                document.getElementById('admin-role').value = admin.role;
+                document.getElementById('admin-phone').value = admin.phone;
+                document.getElementById('admin-address').value = admin.address;
+
+                // Set permissions
+                const permissionsSelect = document.getElementById('admin-permissions');
+                Array.from(permissionsSelect.options).forEach(option => {
+                    option.selected = admin.permissions.includes(option.value);
+                });
+
+                showModal(adminModal, 'Edit Admin');
+            }
+        }
+
+        function deleteAdmin(id) {
+            if (confirm('Are you sure you want to delete this admin?')) {
+                database.admins = database.admins.filter(a => a.id !== id);
+                loadAdmins();
+                showNotification('Admin deleted successfully!', 'success');
+
+                // Add activity
+                database.activities.unshift({
+                    date: new Date().toISOString().split('T')[0],
+                    activity: 'Admin Deleted',
+                    user: 'Admin',
+                    details: `Admin ID: ${id}`
+                });
+                loadActivities();
+            }
+        }
+
+        function searchAdmins() {
+            const query = adminSearch.value.toLowerCase();
+            const filteredAdmins = database.admins.filter(admin =>
+                admin.name.toLowerCase().includes(query) ||
+                admin.email.toLowerCase().includes(query) ||
+                admin.role.toLowerCase().includes(query) ||
+                admin.id.toLowerCase().includes(query)
+            );
+
+            adminBody.innerHTML = '';
+            if (filteredAdmins.length === 0) {
+                adminBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <i class="fas fa-search"></i>
+                            <p>No admins match your search</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredAdmins.forEach(admin => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${admin.id}</td>
+                    <td>${admin.name}</td>
+                    <td>${admin.email}</td>
+                    <td>${admin.role}</td>
+                    <td><span class="badge badge-success">${admin.status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn-warning edit-admin" data-id="${admin.id}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger delete-admin" data-id="${admin.id}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </td>
+                `;
+                adminBody.appendChild(row);
+            });
+
+            // Reattach event listeners
+            document.querySelectorAll('.edit-admin').forEach(button => {
+                button.addEventListener('click', function () {
+                    editAdmin(this.getAttribute('data-id'));
+                });
+            });
+
+            document.querySelectorAll('.delete-admin').forEach(button => {
+                button.addEventListener('click', function () {
+                    deleteAdmin(this.getAttribute('data-id'));
+                });
+            });
+        }
+
+        // Chatbot functions
         function toggleChatbot() {
-            const modal = document.getElementById('chatbotModal');
-            chatbotOpen = !chatbotOpen;
-            modal.style.display = chatbotOpen ? 'block' : 'none';
-            
-            // Remove notification when opened
-            if (chatbotOpen) {
-                document.querySelector('.chatbot-notification').style.display = 'none';
-            }
+            chatbotContainer.classList.toggle('active');
+            chatbotToggle.style.display = chatbotContainer.classList.contains('active') ? 'none' : 'flex';
         }
 
-        function sendMessage() {
-            const input = document.getElementById('chatbotInput');
-            const message = input.value.trim();
-            
-            if (message) {
-                addMessage(message, 'user');
-                input.value = '';
-                
-                // Simulate bot response
-                setTimeout(() => {
-                    generateBotResponse(message);
-                }, 1000);
-            }
-        }
+        function sendChatMessage() {
+            const message = chatbotInput.value.trim();
+            if (message === '') return;
 
-        function sendQuickQuestion(question) {
-            addMessage(question, 'user');
-            
-            // Simulate bot response
+            // Add user message
+            addMessage(message, 'user');
+            chatbotInput.value = '';
+
+            // Process and generate response
             setTimeout(() => {
-                generateBotResponse(question);
-            }, 1000);
+                const response = generateResponse(message);
+                addMessage(response, 'bot');
+            }, 500);
         }
 
         function addMessage(text, sender) {
-            const body = document.getElementById('chatbotBody');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `chatbot-message ${sender}`;
-            
-            if (sender === 'bot') {
-                messageDiv.innerHTML = `
-                    <div class="message-avatar">
-                        <i class="fas fa-robot"></i>
-                    </div>
-                    <div class="message-content">${text}</div>
-                `;
+            messageDiv.classList.add('message', `${sender}-message`);
+            messageDiv.textContent = text;
+            chatbotBody.appendChild(messageDiv);
+            chatbotBody.scrollTop = chatbotBody.scrollHeight;
+        }
+
+        function generateResponse(message) {
+            const lowerMessage = message.toLowerCase();
+
+            // Student queries
+            if (lowerMessage.includes('student') || lowerMessage.includes('students')) {
+                if (lowerMessage.includes('all') || lowerMessage.includes('list') || lowerMessage.includes('show')) {
+                    let response = `There are ${database.students.length} students:\n`;
+                    database.students.forEach(student => {
+                        response += `- ${student.name} (${student.id}), ${student.department}\n`;
+                    });
+                    return response;
+                } else if (lowerMessage.includes('count') || lowerMessage.includes('how many')) {
+                    return `There are ${database.students.length} students in the system.`;
+                } else if (lowerMessage.includes('add') || lowerMessage.includes('create')) {
+                    return "To add a new student, go to the Students tab and click the 'Add Student' button.";
+                }
+            }
+
+            // Staff queries
+            else if (lowerMessage.includes('staff') || lowerMessage.includes('teacher') || lowerMessage.includes('faculty')) {
+                if (lowerMessage.includes('all') || lowerMessage.includes('list') || lowerMessage.includes('show')) {
+                    let response = `There are ${database.staff.length} staff members:\n`;
+                    database.staff.forEach(staff => {
+                        response += `- ${staff.name} (${staff.id}), ${staff.position} in ${staff.department}\n`;
+                    });
+                    return response;
+                } else if (lowerMessage.includes('count') || lowerMessage.includes('how many')) {
+                    return `There are ${database.staff.length} staff members in the system.`;
+                } else if (lowerMessage.includes('add') || lowerMessage.includes('create')) {
+                    return "To add a new staff member, go to the Staff tab and click the 'Add Staff' button.";
+                }
+            }
+
+            // Department queries
+            else if (lowerMessage.includes('department') || lowerMessage.includes('departments')) {
+                if (lowerMessage.includes('all') || lowerMessage.includes('list') || lowerMessage.includes('show')) {
+                    let response = `There are ${database.departments.length} departments:\n`;
+                    database.departments.forEach(dept => {
+                        response += `- ${dept.name} (Head: ${dept.head}), ${dept.studentCount} students, $${dept.budget.toLocaleString()} budget\n`;
+                    });
+                    return response;
+                } else if (lowerMessage.includes('count') || lowerMessage.includes('how many')) {
+                    return `There are ${database.departments.length} departments in the system.`;
+                } else if (lowerMessage.includes('add') || lowerMessage.includes('create')) {
+                    return "To add a new department, go to the Departments tab and click the 'Add Department' button.";
+                }
+            }
+
+            // Admin queries
+            else if (lowerMessage.includes('admin') || lowerMessage.includes('admins')) {
+                if (lowerMessage.includes('all') || lowerMessage.includes('list') || lowerMessage.includes('show')) {
+                    let response = `There are ${database.admins.length} admins:\n`;
+                    database.admins.forEach(admin => {
+                        response += `- ${admin.name} (${admin.id}), ${admin.role}\n`;
+                    });
+                    return response;
+                } else if (lowerMessage.includes('count') || lowerMessage.includes('how many')) {
+                    return `There are ${database.admins.length} admins in the system.`;
+                }
+            }
+
+            // General help
+            else if (lowerMessage.includes('help') || lowerMessage.includes('what can you do')) {
+                return "I can help you with information about students, staff, departments, and admins. Try asking me things like 'How many students are there?' or 'Show all staff members'.";
+            }
+
+            // Default response
+            return "I'm not sure I understand. You can ask me about students, staff, departments, or admins. For example, try 'How many students are there?' or 'Show all staff members'.";
+        }
+
+        // Utility functions
+        function showNotification(message, type) {
+            const notificationIcon = notification.querySelector('i');
+            const notificationText = notification.querySelector('span');
+
+            notificationText.textContent = message;
+
+            if (type === 'success') {
+                notification.className = 'notification';
+                notificationIcon.className = 'fas fa-check-circle';
             } else {
-                messageDiv.innerHTML = `
-                    <div class="message-content">${text}</div>
-                `;
+                notification.className = 'notification error';
+                notificationIcon.className = 'fas fa-exclamation-circle';
             }
-            
-            body.appendChild(messageDiv);
-            body.scrollTop = body.scrollHeight;
-        }
 
-        function generateBotResponse(userMessage) {
-            let response = "I understand you're asking about: '" + userMessage + "'. In a real implementation, I would connect to an AI service to provide detailed assistance.";
-            
-            // Simple response logic
-            const lowerMessage = userMessage.toLowerCase();
-            
-            if (lowerMessage.includes('add') && lowerMessage.includes('user')) {
-                response = "To add a new user:\n1. Click the 'Add New User' button\n2. Fill in the required information\n3. Select the user role\n4. Click 'Add User' to save";
-            } else if (lowerMessage.includes('department') || lowerMessage.includes('statistics')) {
-                response = "Department statistics show the distribution of students across different departments. You can view this in the 'Department Statistics' section above.";
-            } else if (lowerMessage.includes('user management')) {
-                response = "User management allows you to:\n• View all users\n• Add new users\n• Edit existing users\n• Delete users\nUse the table above to manage your users efficiently.";
-            } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-                response = "Hello! I'm here to help you with the EduSync admin dashboard. You can ask me about user management, statistics, or any other features!";
-            }
-            
-            addMessage(response, 'bot');
-        }
+            notification.style.display = 'flex';
 
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 3000);
         }
-
-        // Close chatbot when clicking outside
-        document.addEventListener('click', function(event) {
-            const modal = document.getElementById('chatbotModal');
-            const icon = document.querySelector('.chatbot-icon');
-            
-            if (chatbotOpen && !modal.contains(event.target) && !icon.contains(event.target)) {
-                toggleChatbot();
-            }
-        });
     </script>
-    <!-- Chatbot Widget -->
-    <div class="chatbot-container">
-        <div class="chatbot-icon" onclick="toggleChatbot()">
-            <div class="chatbot-pulse"></div>
-            <i class="fas fa-robot"></i>
-            <div class="chatbot-notification">1</div>
-        </div>
-    </div>
-
-    <!-- Chatbot Widget -->
-    <div class="chatbot-container">
-        <a href="data_con/index.html" class="chatbot-icon">
-            <div class="chatbot-pulse"></div>
-            <i class="fas fa-robot"></i>
-            <div class="chatbot-notification">AI</div>
-            <div class="chatbot-tooltip">Talk to DeepSeek AI Assistant</div>
-        </a>
-    </div>
 </body>
 
 </html>
