@@ -7,6 +7,16 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
     exit();
 }
 
+// Get student data FIRST before any processing
+$stmt = $pdo->prepare("SELECT s.*, u.username FROM students s JOIN users u ON s.user_id = u.user_id WHERE u.user_id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+$student = $stmt->fetch();
+
+// Check if student record exists BEFORE proceeding
+if (!$student) {
+    die("Student record not found! Please contact administrator.");
+}
+
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_profile'])) {
     $name = $_POST['name'];
@@ -38,21 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_assignment'])) 
     $file_name = time() . '_' . basename($_FILES["assignment_file"]["name"]);
     $file_path = $target_dir . $file_name;
 
-    // Get student_id
-    $stmt = $pdo->prepare("SELECT student_id FROM students WHERE user_id = ?");
-    $stmt->execute([$_SESSION['user_id']]);
-    $student_data = $stmt->fetch();
-
     // Check if already submitted
     $check_stmt = $pdo->prepare("SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ?");
-    $check_stmt->execute([$assignment_id, $student_data['student_id']]);
+    $check_stmt->execute([$assignment_id, $student['student_id']]);
 
     if ($check_stmt->fetch()) {
         $error = "You have already submitted this assignment!";
     } else {
         if (move_uploaded_file($_FILES["assignment_file"]["tmp_name"], $file_path)) {
             $stmt = $pdo->prepare("INSERT INTO submissions (assignment_id, student_id, file_path, submitted_on) VALUES (?, ?, ?, NOW())");
-            if ($stmt->execute([$assignment_id, $student_data['student_id'], $file_path])) {
+            if ($stmt->execute([$assignment_id, $student['student_id'], $file_path])) {
                 $success = "Assignment submitted successfully!";
             } else {
                 $error = "Error submitting assignment!";
@@ -124,15 +129,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_certificate']))
     }
 }
 
-// Get student data
-$stmt = $pdo->prepare("SELECT s.*, u.username FROM students s JOIN users u ON s.user_id = u.user_id WHERE u.user_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$student = $stmt->fetch();
-
-if (!$student) {
-    die("Student record not found!");
-}
-
 // Get assignments
 $assignments_stmt = $pdo->prepare("
     SELECT a.*, s.subject_name, sub.marks, sub.status, sub.submission_id, sub.submitted_on, sub.file_path
@@ -188,23 +184,31 @@ if (isset($_GET['assignment_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Dashboard | Academic Portal</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary: #2c5530;
-            --primary-dark: #1e3a24;
-            --primary-light: #4a7c59;
-            --secondary: #6b7280;
-            --accent: #8b5cf6;
-            --success: #059669;
-            --warning: #d97706;
-            --danger: #dc2626;
-            --light: #f8fafc;
-            --dark: #1f2937;
-            --border: #e5e7eb;
-            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --primary: #4361ee;
+            --primary-dark: #3a0ca3;
+            --primary-light: #4895ef;
+            --accent: #f72585;
+            --success: #4cc9f0;
+            --warning: #f8961e;
+            --danger: #e63946;
+            --dark: #1a1a2e;
+            --light: #f8f9fa;
+            --gradient-primary: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
+            --gradient-secondary: linear-gradient(135deg, #f72585 0%, #b5179e 100%);
+            --gradient-success: linear-gradient(135deg, #4cc9f0 0%, #4895ef 100%);
+            --gradient-warning: linear-gradient(135deg, #f8961e 0%, #f3722c 100%);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --sidebar-bg: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+            --glass-effect: rgba(255, 255, 255, 0.1);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --shadow-hover: 0 15px 45px rgba(0, 0, 0, 0.15);
+            --radius: 16px;
+            --transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         * {
@@ -214,26 +218,136 @@ if (isset($_GET['assignment_id'])) {
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            color: var(--dark);
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
             line-height: 1.6;
             min-height: 100vh;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+        .dashboard-container {
+            display: flex;
+            min-height: 100vh;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 280px;
+            background: var(--sidebar-bg);
+            color: white;
+            padding: 0;
+            box-shadow: var(--shadow);
+            z-index: 100;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--gradient-secondary);
+        }
+
+        .sidebar-header {
+            padding: 30px 25px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar-header h2 {
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .sidebar-header p {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            color: #4cc9f0;
+        }
+
+        .sidebar-menu {
+            padding: 25px 0;
+        }
+
+        .menu-item {
+            padding: 16px 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            transition: var(--transition);
+            border-left: 4px solid transparent;
+            margin: 5px 15px;
+            border-radius: 12px 0 0 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .menu-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: var(--gradient-primary);
+            opacity: 0.1;
+            transition: var(--transition);
+        }
+
+        .menu-item:hover::before,
+        .menu-item.active::before {
+            left: 0;
+        }
+
+        .menu-item:hover,
+        .menu-item.active {
+            color: white;
+            border-left: 4px solid var(--accent);
+            transform: translateX(5px);
+        }
+
+        .menu-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 1.2rem;
+            z-index: 1;
+        }
+
+        /* Main Content Styles */
+        .main-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            background: rgba(248, 249, 250, 0.1);
         }
 
         .header {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 35px;
+            background: var(--card-bg);
+            padding: 25px 30px;
+            border-radius: var(--radius);
             box-shadow: var(--shadow);
-            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             position: relative;
             overflow: hidden;
         }
@@ -243,309 +357,544 @@ if (isset($_GET['assignment_id'])) {
             position: absolute;
             top: 0;
             left: 0;
-            width: 6px;
+            width: 8px;
             height: 100%;
-            background: var(--primary);
+            background: var(--gradient-secondary);
         }
 
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-
-        .welcome-section h1 {
+        .header h1 {
+            color: var(--dark);
             font-size: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 15px;
             font-weight: 700;
-            color: var(--primary);
-            margin-bottom: 8px;
-        }
-
-        .welcome-section p {
-            color: var(--secondary);
-            font-size: 1.1rem;
         }
 
         .user-info {
             display: flex;
             align-items: center;
-            gap: 16px;
-            background: var(--light);
-            padding: 12px 20px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
+            gap: 20px;
         }
 
         .user-avatar {
-            width: 40px;
-            height: 40px;
+            width: 55px;
+            height: 55px;
             border-radius: 50%;
-            background: var(--primary);
+            background: var(--gradient-primary);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-weight: 600;
-            font-size: 1.1rem;
+            font-weight: bold;
+            font-size: 1.4rem;
+            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
+            transition: var(--transition);
         }
 
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin-bottom: 24px;
+        .user-avatar:hover {
+            transform: scale(1.1) rotate(5deg);
         }
 
-        @media (max-width: 768px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
-            transition: all 0.3s ease;
-        }
-
-        .card:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-2px);
-        }
-
-        .card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding-bottom: 16px;
-            border-bottom: 2px solid var(--border);
-        }
-
-        .card-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--primary);
+        .logout-btn {
+            background: var(--gradient-secondary);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            cursor: pointer;
             display: flex;
             align-items: center;
             gap: 10px;
-        }
-
-        .card-title i {
-            color: var(--primary-light);
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-        }
-
-        .info-item {
-            padding: 16px;
-            background: var(--light);
-            border-radius: 8px;
-            border-left: 4px solid var(--primary);
-        }
-
-        .info-label {
-            font-size: 0.875rem;
-            color: var(--secondary);
-            text-transform: uppercase;
-            font-weight: 500;
-            margin-bottom: 4px;
-            letter-spacing: 0.5px;
-        }
-
-        .info-value {
-            font-size: 1rem;
+            transition: var(--transition);
             font-weight: 600;
-            color: var(--dark);
-        }
-
-        .table-container {
-            overflow-x: auto;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: white;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-        }
-
-        th {
-            background: var(--primary);
-            color: white;
-            font-weight: 500;
-            padding: 16px;
-            text-align: left;
-            border-bottom: 1px solid var(--primary-dark);
-        }
-
-        td {
-            padding: 16px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        tr:last-child td {
-            border-bottom: none;
-        }
-
-        tr:hover {
-            background: #f9fafb;
-        }
-
-        .status {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .status-present {
-            background: #d1fae5;
-            color: var(--success);
-            border: 1px solid #a7f3d0;
-        }
-
-        .status-absent {
-            background: #fee2e2;
-            color: var(--danger);
-            border: 1px solid #fecaca;
-        }
-
-        .status-submitted {
-            background: #d1fae5;
-            color: var(--success);
-            border: 1px solid #a7f3d0;
-        }
-
-        .status-pending {
-            background: #fef3c7;
-            color: var(--warning);
-            border: 1px solid #fde68a;
-        }
-
-        .status-uploaded {
-            background: #dbeafe;
-            color: #1d4ed8;
-            border: 1px solid #93c5fd;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            box-shadow: 0 4px 15px rgba(247, 37, 133, 0.3);
             text-decoration: none;
-            font-size: 0.9rem;
-            font-family: inherit;
         }
 
-        .btn:focus {
-            outline: 2px solid var(--primary-light);
-            outline-offset: 2px;
+        .logout-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(247, 37, 133, 0.4);
+        }
+
+        /* Stats Cards */
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 35px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 30px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 6px;
+            height: 100%;
+            background: var(--gradient-primary);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-8px) rotate(1deg);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .stat-icon {
+            width: 70px;
+            height: 70px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: white;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .icon-assignments {
+            background: var(--gradient-primary);
+        }
+
+        .icon-submitted {
+            background: var(--gradient-success);
+        }
+
+        .icon-pending {
+            background: var(--gradient-warning);
+        }
+
+        .icon-attendance {
+            background: var(--gradient-secondary);
+        }
+
+        .stat-info h3 {
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+            color: var(--dark);
+            font-weight: 700;
+        }
+
+        .stat-info p {
+            color: #666;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        /* Card Styles */
+        .dashboard-section {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dashboard-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--gradient-primary);
+        }
+
+        .dashboard-section:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .dashboard-section h2 {
+            color: var(--dark);
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(67, 97, 238, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        /* Button Styles */
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: var(--transition);
+            text-decoration: none;
+            font-family: 'Poppins', sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
         }
 
         .btn-primary {
-            background: var(--primary);
+            background: var(--gradient-primary);
             color: white;
+            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
         }
 
         .btn-primary:hover {
-            background: var(--primary-dark);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(67, 97, 238, 0.4);
         }
 
         .btn-success {
-            background: var(--success);
+            background: var(--gradient-success);
             color: white;
+            box-shadow: 0 4px 15px rgba(76, 201, 240, 0.3);
         }
 
         .btn-success:hover {
-            background: #047857;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(76, 201, 240, 0.4);
         }
 
         .btn-warning {
-            background: var(--warning);
+            background: var(--gradient-warning);
             color: white;
+            box-shadow: 0 4px 15px rgba(248, 150, 30, 0.3);
         }
 
         .btn-warning:hover {
-            background: #b45309;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(248, 150, 30, 0.4);
         }
 
         .btn-danger {
-            background: var(--danger);
+            background: var(--gradient-secondary);
             color: white;
+            box-shadow: 0 4px 15px rgba(247, 37, 133, 0.3);
         }
 
         .btn-danger:hover {
-            background: #b91c1c;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(247, 37, 133, 0.4);
         }
 
-        .btn-info {
-            background: #0ea5e9;
+        /* Table Styles */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        th {
+            background: var(--gradient-primary);
             color: white;
+            font-weight: 600;
+            padding: 18px;
+            text-align: left;
+            font-size: 0.95rem;
         }
 
-        .btn-info:hover {
-            background: #0284c7;
+        td {
+            padding: 18px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            transition: var(--transition);
         }
 
-        .btn-outline {
-            background: transparent;
-            color: var(--primary);
-            border: 1px solid var(--primary);
-        }
-
-        .btn-outline:hover {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-logout {
-            background: var(--secondary);
-            color: white;
-        }
-
-        .btn-logout:hover {
-            background: #4b5563;
+        tr:hover td {
+            background: rgba(67, 97, 238, 0.05);
+            transform: scale(1.01);
         }
 
         .action-buttons {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
         }
 
+        .action-btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: var(--transition);
+        }
+
+        /* Status Badges */
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-present {
+            background: rgba(76, 201, 240, 0.2);
+            color: #4895ef;
+            border: 1px solid rgba(76, 201, 240, 0.3);
+        }
+
+        .status-absent {
+            background: rgba(247, 37, 133, 0.2);
+            color: #f72585;
+            border: 1px solid rgba(247, 37, 133, 0.3);
+        }
+
+        .status-submitted {
+            background: rgba(76, 201, 240, 0.2);
+            color: #4895ef;
+            border: 1px solid rgba(76, 201, 240, 0.3);
+        }
+
+        .status-pending {
+            background: rgba(248, 150, 30, 0.2);
+            color: #f8961e;
+            border: 1px solid rgba(248, 150, 30, 0.3);
+        }
+
+        .status-uploaded {
+            background: rgba(67, 97, 238, 0.2);
+            color: #4361ee;
+            border: 1px solid rgba(67, 97, 238, 0.3);
+        }
+
+        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
-            top: 0;
+            z-index: 1000;
             left: 0;
+            top: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            animation: fadeIn 0.3s ease;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
         }
 
+        .modal-content {
+            background: var(--card-bg);
+            margin: 5% auto;
+            padding: 35px;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 650px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(67, 97, 238, 0.1);
+        }
+
+        .modal-header h3 {
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: var(--transition);
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .close:hover {
+            color: var(--accent);
+            background: rgba(247, 37, 133, 0.1);
+            transform: rotate(90deg);
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 0.95rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid rgba(67, 97, 238, 0.1);
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: var(--transition);
+            font-family: 'Poppins', sans-serif;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--primary);
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        /* Alert Styles */
+        .alert {
+            padding: 20px 25px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-weight: 500;
+            box-shadow: var(--shadow);
+            border-left: 5px solid;
+        }
+
+        .alert-success {
+            background: rgba(76, 201, 240, 0.15);
+            color: #4895ef;
+            border-left-color: #4cc9f0;
+        }
+
+        .alert-error {
+            background: rgba(247, 37, 133, 0.15);
+            color: #f72585;
+            border-left-color: #f72585;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 30px;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: var(--dark);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .dashboard-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+            }
+
+            .stats-container {
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 20px 15px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 20px;
+                align-items: flex-start;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                padding: 25px;
+                margin: 10% auto;
+            }
+        }
+
+        /* Animation Keyframes */
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -556,22 +905,10 @@ if (isset($_GET['assignment_id'])) {
             }
         }
 
-        .modal-content {
-            background: white;
-            margin: 5% auto;
-            padding: 0;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 600px;
-            box-shadow: var(--shadow-lg);
-            animation: modalSlideIn 0.3s ease;
-            position: relative;
-        }
-
-        @keyframes modalSlideIn {
+        @keyframes fadeInUp {
             from {
                 opacity: 0;
-                transform: translateY(-20px);
+                transform: translateY(30px);
             }
 
             to {
@@ -580,95 +917,22 @@ if (isset($_GET['assignment_id'])) {
             }
         }
 
-        .modal-header {
-            padding: 24px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .close {
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: var(--secondary);
-            transition: color 0.3s ease;
-            background: none;
-            border: none;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .close:hover {
-            color: var(--danger);
-        }
-
-        .modal-body {
-            padding: 24px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: var(--dark);
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            background: white;
-            font-family: inherit;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(44, 85, 48, 0.1);
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-            margin-top: 24px;
-        }
-
-        .alert {
-            padding: 16px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
+        @keyframes slideInRight {
             from {
                 opacity: 0;
-                transform: translateY(-10px);
+                transform: translateX(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes countUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
             }
 
             to {
@@ -677,138 +941,6 @@ if (isset($_GET['assignment_id'])) {
             }
         }
 
-        .alert-success {
-            background: #d1fae5;
-            color: var(--success);
-            border: 1px solid #a7f3d0;
-        }
-
-        .alert-error {
-            background: #fee2e2;
-            color: var(--danger);
-            border: 1px solid #fecaca;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--secondary);
-        }
-
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-
-        .empty-state h3 {
-            font-size: 1.25rem;
-            margin-bottom: 8px;
-            color: var(--secondary);
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-            border: 1px solid var(--border);
-            transition: all 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
-        }
-
-        .stat-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary);
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
-            font-size: 0.875rem;
-            color: var(--secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .assignment-details {
-            margin-bottom: 24px;
-        }
-
-        .assignment-details-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-top: 16px;
-        }
-
-        .assignment-detail-item {
-            padding: 12px;
-            background: var(--light);
-            border-radius: 8px;
-        }
-
-        .assignment-detail-label {
-            font-size: 0.875rem;
-            color: var(--secondary);
-            margin-bottom: 4px;
-        }
-
-        .assignment-detail-value {
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        .assignment-description {
-            margin-top: 20px;
-            padding: 16px;
-            background: var(--light);
-            border-radius: 8px;
-            border-left: 4px solid var(--primary);
-        }
-
-        .assignment-description h4 {
-            margin-bottom: 8px;
-            color: var(--primary);
-        }
-
-        .certificate-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .file-info {
-            font-size: 0.875rem;
-            color: var(--secondary);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        @media (max-width: 768px) {
-            .assignment-details-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .certificate-actions {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-        }
-
-        /* Chatbot Styles */
         /* Chatbot Styles */
         .chatbot-container {
             position: fixed;
@@ -828,7 +960,6 @@ if (isset($_GET['assignment_id'])) {
             cursor: pointer;
             box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
             transition: all 0.3s ease;
-            animation: float 3s ease-in-out infinite;
             position: relative;
             overflow: hidden;
             text-decoration: none;
@@ -889,10 +1020,8 @@ if (isset($_GET['assignment_id'])) {
             color: white;
             font-size: 12px;
             font-weight: bold;
-            animation: bounce 1s infinite;
         }
 
-        /* Tooltip */
         .chatbot-tooltip {
             position: absolute;
             bottom: 100%;
@@ -924,33 +1053,15 @@ if (isset($_GET['assignment_id'])) {
             transform: translateY(0);
         }
 
-        /* Animations */
-        @keyframes float {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-10px);
-            }
-        }
-
         @keyframes pulse {
             0% {
                 transform: scale(1);
                 opacity: 1;
             }
+
             100% {
                 transform: scale(2);
                 opacity: 0;
-            }
-        }
-
-        @keyframes bounce {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.2);
             }
         }
 
@@ -958,6 +1069,7 @@ if (isset($_GET['assignment_id'])) {
             0% {
                 transform: rotate(0deg);
             }
+
             100% {
                 transform: rotate(360deg);
             }
@@ -966,158 +1078,163 @@ if (isset($_GET['assignment_id'])) {
 </head>
 
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="header-content">
-                <div class="welcome-section">
-                    <h1>Academic Student Portal</h1>
-                    <p>Welcome to your personalized dashboard</p>
-                </div>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-graduation-cap"></i> EduSync Pro</h2>
+                <p>Student Dashboard Portal</p>
+            </div>
+            <div class="sidebar-menu">
+                <a href="#" class="menu-item active">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard Overview</span>
+                </a>
+                <a href="#" class="menu-item">
+                    <i class="fas fa-book"></i>
+                    <span>My Courses</span>
+                </a>
+                <a href="#" class="menu-item">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Assignments</span>
+                </a>
+                <a href="#" class="menu-item">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>Attendance</span>
+                </a>
+                <a href="#" class="menu-item">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Grades & Progress</span>
+                </a>
+                <a href="#" class="menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <h1><i class="fas fa-tachometer-alt"></i> Student Dashboard</h1>
                 <div class="user-info">
                     <div class="user-avatar">
                         <?php echo strtoupper(substr($student['name'], 0, 1)); ?>
                     </div>
                     <div>
-                        <div style="font-weight: 600;"><?php echo htmlspecialchars($student['name']); ?></div>
-                        <div style="font-size: 0.9rem; color: var(--secondary);">Student ID:
-                            <?php echo htmlspecialchars($student['username']); ?>
-                        </div>
+                        <div><strong><?php echo htmlspecialchars($student['name']); ?></strong></div>
+                        <div style="color: var(--primary);">Student ID:
+                            <?php echo htmlspecialchars($student['username']); ?></div>
                     </div>
-                    <a href="logout.php" class="btn btn-logout">
+                    <a href="logout.php" class="logout-btn">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </a>
                 </div>
             </div>
-        </div>
 
-        <?php if (isset($success)): ?>
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if (isset($error)): ?>
-            <div class="alert alert-error">
-                <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
-            </div>
-        <?php endif; ?>
-
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($assignments); ?></div>
-                <div class="stat-label">Total Assignments</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">
-                    <?php
-                    $submitted = 0;
-                    foreach ($assignments as $assignment) {
-                        if ($assignment['submission_id'])
-                            $submitted++;
-                    }
-                    echo $submitted;
-                    ?>
+            <?php if (isset($success)): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> <?php echo $success; ?>
                 </div>
-                <div class="stat-label">Submitted</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($assignments) - $submitted; ?></div>
-                <div class="stat-label">Pending</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($attendance); ?></div>
-                <div class="stat-label">Attendance Records</div>
-            </div>
-        </div>
+            <?php endif; ?>
 
-        <div class="dashboard-grid">
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-user-graduate"></i> Student Profile</h2>
+            <?php if (isset($error)): ?>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
                 </div>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <div class="info-label">Full Name</div>
-                        <div class="info-value"><?php echo htmlspecialchars($student['name']); ?></div>
+            <?php endif; ?>
+
+            <!-- Stats Cards -->
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-icon icon-assignments">
+                        <i class="fas fa-tasks"></i>
                     </div>
-                    <div class="info-item">
-                        <div class="info-label">Email Address</div>
-                        <div class="info-value"><?php echo htmlspecialchars($student['email']); ?></div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">Phone Number</div>
-                        <div class="info-value"><?php echo htmlspecialchars($student['phone']); ?></div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">Department</div>
-                        <div class="info-value"><?php echo htmlspecialchars($student['department']); ?></div>
-                    </div>
-                    <div class="info-item">
-                        <div class="info-label">Semester</div>
-                        <div class="info-value"><?php echo htmlspecialchars($student['semester']); ?></div>
+                    <div class="stat-info">
+                        <h3><?php echo count($assignments); ?></h3>
+                        <p>Total Assignments</p>
                     </div>
                 </div>
-                <button class="btn btn-warning" onclick="openProfileModal()" style="margin-top: 20px; width: 100%;">
+                <div class="stat-card">
+                    <div class="stat-icon icon-submitted">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3>
+                            <?php
+                            $submitted = 0;
+                            foreach ($assignments as $assignment) {
+                                if ($assignment['submission_id'])
+                                    $submitted++;
+                            }
+                            echo $submitted;
+                            ?>
+                        </h3>
+                        <p>Submitted</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon icon-pending">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3><?php echo count($assignments) - $submitted; ?></h3>
+                        <p>Pending</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon icon-attendance">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div class="stat-info">
+                        <h3><?php echo count($attendance); ?></h3>
+                        <p>Attendance Records</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-section">
+                <h2><i class="fas fa-user-graduate"></i> Student Profile</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div
+                        style="background: rgba(67, 97, 238, 0.05); padding: 20px; border-radius: 12px; border-left: 4px solid var(--primary);">
+                        <div style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Full Name</div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">
+                            <?php echo htmlspecialchars($student['name']); ?></div>
+                    </div>
+                    <div
+                        style="background: rgba(67, 97, 238, 0.05); padding: 20px; border-radius: 12px; border-left: 4px solid var(--primary);">
+                        <div style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Email Address</div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">
+                            <?php echo htmlspecialchars($student['email']); ?></div>
+                    </div>
+                    <div
+                        style="background: rgba(67, 97, 238, 0.05); padding: 20px; border-radius: 12px; border-left: 4px solid var(--primary);">
+                        <div style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Department</div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">
+                            <?php echo htmlspecialchars($student['department']); ?></div>
+                    </div>
+                    <div
+                        style="background: rgba(67, 97, 238, 0.05); padding: 20px; border-radius: 12px; border-left: 4px solid var(--primary);">
+                        <div style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Semester</div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">
+                            <?php echo htmlspecialchars($student['semester']); ?></div>
+                    </div>
+                </div>
+                <button class="btn btn-warning" onclick="openProfileModal()" style="margin-top: 20px;">
                     <i class="fas fa-edit"></i> Update Profile Information
                 </button>
             </div>
 
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-calendar-check"></i> Recent Attendance</h2>
-                </div>
-                <?php if (empty($attendance)): ?>
+            <div class="dashboard-section">
+                <h2><i class="fas fa-file-alt"></i> Course Assignments</h2>
+                <?php if (empty($assignments)): ?>
                     <div class="empty-state">
-                        <i class="fas fa-calendar-times"></i>
-                        <h3>No Attendance Records</h3>
-                        <p>Your attendance records will appear here once available.</p>
+                        <i class="fas fa-inbox"></i>
+                        <h3>No Assignments Available</h3>
+                        <p>You don't have any assignments at the moment.</p>
                     </div>
                 <?php else: ?>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Subject</th>
-                                    <th>Date</th>
-                                    <th>Status</th>
-                                    <th>Remarks</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($attendance as $record): ?>
-                                    <tr>
-                                        <td><strong><?php echo htmlspecialchars($record['subject_name']); ?></strong></td>
-                                        <td><?php echo htmlspecialchars($record['date']); ?></td>
-                                        <td>
-                                            <span
-                                                class="status <?php echo $record['status'] == 'present' ? 'status-present' : 'status-absent'; ?>">
-                                                <i
-                                                    class="fas fa-<?php echo $record['status'] == 'present' ? 'check' : 'times'; ?>"></i>
-                                                <?php echo ucfirst($record['status']); ?>
-                                            </span>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($record['remarks']); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title"><i class="fas fa-file-alt"></i> Course Assignments</h2>
-            </div>
-            <?php if (empty($assignments)): ?>
-                <div class="empty-state">
-                    <i class="fas fa-inbox"></i>
-                    <h3>No Assignments Available</h3>
-                    <p>You don't have any assignments at the moment.</p>
-                </div>
-            <?php else: ?>
-                <div class="table-container">
                     <table>
                         <thead>
                             <tr>
@@ -1143,11 +1260,11 @@ if (isset($_GET['assignment_id'])) {
                                     </td>
                                     <td>
                                         <?php if ($assignment['submission_id']): ?>
-                                            <span class="status status-submitted">
+                                            <span class="status-badge status-submitted">
                                                 <i class="fas fa-check"></i> <?php echo $assignment['status'] ?? 'Submitted'; ?>
                                             </span>
                                         <?php else: ?>
-                                            <span class="status status-pending">
+                                            <span class="status-badge status-pending">
                                                 <i class="fas fa-clock"></i> Pending
                                             </span>
                                         <?php endif; ?>
@@ -1155,11 +1272,11 @@ if (isset($_GET['assignment_id'])) {
                                     <td>
                                         <div class="action-buttons">
                                             <a href="?assignment_id=<?php echo $assignment['assignment_id']; ?>"
-                                                class="btn btn-primary">
+                                                class="btn btn-primary action-btn">
                                                 <i class="fas fa-eye"></i> View
                                             </a>
                                             <?php if (!$assignment['submission_id']): ?>
-                                                <button class="btn btn-success"
+                                                <button class="btn btn-success action-btn"
                                                     onclick="openSubmitModal(<?php echo $assignment['assignment_id']; ?>)">
                                                     <i class="fas fa-upload"></i> Submit
                                                 </button>
@@ -1170,25 +1287,62 @@ if (isset($_GET['assignment_id'])) {
                             <?php endforeach; ?>
                         </tbody>
                     </table>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title"><i class="fas fa-calendar-alt"></i> Events & Achievements</h2>
-                <button class="btn btn-primary" onclick="openAddEventModal()">
-                    <i class="fas fa-plus"></i> Add Event
-                </button>
+                <?php endif; ?>
             </div>
-            <?php if (empty($events)): ?>
-                <div class="empty-state">
-                    <i class="fas fa-calendar-plus"></i>
-                    <h3>No Events Recorded</h3>
-                    <p>Your event participations and achievements will appear here.</p>
+
+            <div class="dashboard-section">
+                <h2><i class="fas fa-calendar-check"></i> Recent Attendance</h2>
+                <?php if (empty($attendance)): ?>
+                    <div class="empty-state">
+                        <i class="fas fa-calendar-times"></i>
+                        <h3>No Attendance Records</h3>
+                        <p>Your attendance records will appear here once available.</p>
+                    </div>
+                <?php else: ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($attendance as $record): ?>
+                                <tr>
+                                    <td><strong><?php echo htmlspecialchars($record['subject_name']); ?></strong></td>
+                                    <td><?php echo htmlspecialchars($record['date']); ?></td>
+                                    <td>
+                                        <span
+                                            class="status-badge <?php echo $record['status'] == 'present' ? 'status-present' : 'status-absent'; ?>">
+                                            <i
+                                                class="fas fa-<?php echo $record['status'] == 'present' ? 'check' : 'times'; ?>"></i>
+                                            <?php echo ucfirst($record['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo htmlspecialchars($record['remarks']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </div>
+
+            <div class="dashboard-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                    <h2><i class="fas fa-calendar-alt"></i> Events & Achievements</h2>
+                    <button class="btn btn-primary" onclick="openAddEventModal()">
+                        <i class="fas fa-plus"></i> Add Event
+                    </button>
                 </div>
-            <?php else: ?>
-                <div class="table-container">
+                <?php if (empty($events)): ?>
+                    <div class="empty-state">
+                        <i class="fas fa-calendar-plus"></i>
+                        <h3>No Events Recorded</h3>
+                        <p>Your event participations and achievements will appear here.</p>
+                    </div>
+                <?php else: ?>
                     <table>
                         <thead>
                             <tr>
@@ -1207,7 +1361,7 @@ if (isset($_GET['assignment_id'])) {
                                     <td><?php echo htmlspecialchars($event['event_location']); ?></td>
                                     <td>
                                         <span
-                                            class="status <?php echo $event['prize_won'] ? 'status-submitted' : 'status-pending'; ?>">
+                                            class="status-badge <?php echo $event['prize_won'] ? 'status-submitted' : 'status-pending'; ?>">
                                             <i class="fas fa-<?php echo $event['prize_won'] ? 'trophy' : 'medal'; ?>"></i>
                                             <?php echo $event['prize_won'] ? 'Yes' : 'No'; ?>
                                         </span>
@@ -1223,24 +1377,24 @@ if (isset($_GET['assignment_id'])) {
                                     </td>
                                     <td>
                                         <?php if ($event['certificate_path']): ?>
-                                            <span class="status status-uploaded">
+                                            <span class="status-badge status-uploaded">
                                                 <i class="fas fa-file-certificate"></i> Uploaded
                                             </span>
                                         <?php else: ?>
-                                            <span class="status status-pending">
+                                            <span class="status-badge status-pending">
                                                 <i class="fas fa-times"></i> Not Uploaded
                                             </span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <div class="certificate-actions">
+                                        <div class="action-buttons">
                                             <?php if ($event['certificate_path']): ?>
                                                 <a href="<?php echo htmlspecialchars($event['certificate_path']); ?>"
-                                                    class="btn btn-info" target="_blank" download>
+                                                    class="btn btn-primary action-btn" target="_blank" download>
                                                     <i class="fas fa-download"></i> Download
                                                 </a>
                                             <?php endif; ?>
-                                            <button class="btn btn-warning"
+                                            <button class="btn btn-warning action-btn"
                                                 onclick="openUploadCertificateModal(<?php echo $event['event_id']; ?>)">
                                                 <i class="fas fa-upload"></i>
                                                 <?php echo $event['certificate_path'] ? 'Update' : 'Upload'; ?>
@@ -1251,8 +1405,8 @@ if (isset($_GET['assignment_id'])) {
                             <?php endforeach; ?>
                         </tbody>
                     </table>
-                </div>
-            <?php endif; ?>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 
@@ -1260,28 +1414,28 @@ if (isset($_GET['assignment_id'])) {
     <div id="profileModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-user-edit"></i> Update Profile</h3>
-                <button class="close" onclick="closeProfileModal()">&times;</button>
+                <h3><i class="fas fa-user-edit"></i> Update Profile</h3>
+                <span class="close" onclick="closeProfileModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <form method="POST">
                     <input type="hidden" name="update_profile" value="1">
                     <div class="form-group">
-                        <label class="form-label">Full Name</label>
+                        <label>Full Name</label>
                         <input type="text" name="name" class="form-control"
                             value="<?php echo htmlspecialchars($student['name']); ?>" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Email Address</label>
+                        <label>Email Address</label>
                         <input type="email" name="email" class="form-control"
                             value="<?php echo htmlspecialchars($student['email']); ?>" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Phone Number</label>
+                        <label>Phone Number</label>
                         <input type="text" name="phone" class="form-control"
                             value="<?php echo htmlspecialchars($student['phone']); ?>">
                     </div>
-                    <div class="form-actions">
+                    <div class="modal-buttons">
                         <button type="button" class="btn btn-danger" onclick="closeProfileModal()">
                             <i class="fas fa-times"></i> Cancel
                         </button>
@@ -1298,21 +1452,21 @@ if (isset($_GET['assignment_id'])) {
     <div id="submitModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-file-upload"></i> Submit Assignment</h3>
-                <button class="close" onclick="closeSubmitModal()">&times;</button>
+                <h3><i class="fas fa-file-upload"></i> Submit Assignment</h3>
+                <span class="close" onclick="closeSubmitModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="submit_assignment" value="1">
                     <input type="hidden" name="assignment_id" id="assignment_id">
                     <div class="form-group">
-                        <label class="form-label">Upload Assignment File</label>
+                        <label>Upload Assignment File</label>
                         <input type="file" name="assignment_file" class="form-control" required style="padding: 8px;"
                             accept=".pdf,.doc,.docx,.txt">
                         <small style="color: var(--secondary); margin-top: 5px; display: block;">Accepted formats: PDF,
                             DOC, DOCX, TXT</small>
                     </div>
-                    <div class="form-actions">
+                    <div class="modal-buttons">
                         <button type="button" class="btn btn-danger" onclick="closeSubmitModal()">
                             <i class="fas fa-times"></i> Cancel
                         </button>
@@ -1329,38 +1483,38 @@ if (isset($_GET['assignment_id'])) {
     <div id="addEventModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-calendar-plus"></i> Add New Event</h3>
-                <button class="close" onclick="closeAddEventModal()">&times;</button>
+                <h3><i class="fas fa-calendar-plus"></i> Add New Event</h3>
+                <span class="close" onclick="closeAddEventModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="add_event" value="1">
                     <div class="form-group">
-                        <label class="form-label">Event Name *</label>
+                        <label>Event Name *</label>
                         <input type="text" name="event_name" class="form-control" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Event Location</label>
+                        <label>Event Location</label>
                         <input type="text" name="event_location" class="form-control">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" name="prize_won" value="1" style="width: auto;">
                             Prize Won
                         </label>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Secured Place</label>
+                        <label>Secured Place</label>
                         <input type="text" name="secured_place" class="form-control" placeholder="e.g., 1st, 2nd, 3rd">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Upload Certificate (Optional)</label>
+                        <label>Upload Certificate (Optional)</label>
                         <input type="file" name="certificate_file" class="form-control" style="padding: 8px;"
                             accept=".pdf,.jpg,.jpeg,.png">
                         <small style="color: var(--secondary); margin-top: 5px; display: block;">Accepted formats: PDF,
                             JPG, JPEG, PNG</small>
                     </div>
-                    <div class="form-actions">
+                    <div class="modal-buttons">
                         <button type="button" class="btn btn-danger" onclick="closeAddEventModal()">
                             <i class="fas fa-times"></i> Cancel
                         </button>
@@ -1377,21 +1531,21 @@ if (isset($_GET['assignment_id'])) {
     <div id="uploadCertificateModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title"><i class="fas fa-file-certificate"></i> Upload Certificate</h3>
-                <button class="close" onclick="closeUploadCertificateModal()">&times;</button>
+                <h3><i class="fas fa-file-certificate"></i> Upload Certificate</h3>
+                <span class="close" onclick="closeUploadCertificateModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="update_certificate" value="1">
                     <input type="hidden" name="event_id" id="certificate_event_id">
                     <div class="form-group">
-                        <label class="form-label">Select Certificate File</label>
+                        <label>Select Certificate File</label>
                         <input type="file" name="certificate_file" class="form-control" required style="padding: 8px;"
                             accept=".pdf,.jpg,.jpeg,.png">
                         <small style="color: var(--secondary); margin-top: 5px; display: block;">Accepted formats: PDF,
                             JPG, JPEG, PNG</small>
                     </div>
-                    <div class="form-actions">
+                    <div class="modal-buttons">
                         <button type="button" class="btn btn-danger" onclick="closeUploadCertificateModal()">
                             <i class="fas fa-times"></i> Cancel
                         </button>
@@ -1409,64 +1563,63 @@ if (isset($_GET['assignment_id'])) {
         <div id="viewAssignmentModal" class="modal" style="display: block;">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3 class="modal-title"><i class="fas fa-file-alt"></i> Assignment Details</h3>
+                    <h3><i class="fas fa-file-alt"></i> Assignment Details</h3>
                     <a href="?" class="close">&times;</a>
                 </div>
                 <div class="modal-body">
-                    <div class="assignment-details">
-                        <h3><?php echo htmlspecialchars($assignment_details['title']); ?></h3>
-                        <div class="assignment-details-grid">
-                            <div class="assignment-detail-item">
-                                <div class="assignment-detail-label">Subject</div>
-                                <div class="assignment-detail-value">
-                                    <?php echo htmlspecialchars($assignment_details['subject_name']); ?>
-                                </div>
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: var(--primary); margin-bottom: 16px;">
+                            <?php echo htmlspecialchars($assignment_details['title']); ?></h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                            <div style="padding: 12px; background: rgba(67, 97, 238, 0.05); border-radius: 8px;">
+                                <div style="font-size: 0.875rem; color: var(--primary); margin-bottom: 4px;">Subject</div>
+                                <div style="font-weight: 600;">
+                                    <?php echo htmlspecialchars($assignment_details['subject_name']); ?></div>
                             </div>
-                            <div class="assignment-detail-item">
-                                <div class="assignment-detail-label">Due Date</div>
-                                <div class="assignment-detail-value">
-                                    <?php echo htmlspecialchars($assignment_details['due_date']); ?>
-                                </div>
+                            <div style="padding: 12px; background: rgba(67, 97, 238, 0.05); border-radius: 8px;">
+                                <div style="font-size: 0.875rem; color: var(--primary); margin-bottom: 4px;">Due Date</div>
+                                <div style="font-weight: 600;">
+                                    <?php echo htmlspecialchars($assignment_details['due_date']); ?></div>
                             </div>
-                            <div class="assignment-detail-item">
-                                <div class="assignment-detail-label">Status</div>
-                                <div class="assignment-detail-value">
+                            <div style="padding: 12px; background: rgba(67, 97, 238, 0.05); border-radius: 8px;">
+                                <div style="font-size: 0.875rem; color: var(--primary); margin-bottom: 4px;">Status</div>
+                                <div>
                                     <?php if ($assignment_details['submission_id']): ?>
-                                        <span class="status status-submitted">
+                                        <span class="status-badge status-submitted">
                                             <i class="fas fa-check"></i> Submitted
                                         </span>
                                     <?php else: ?>
-                                        <span class="status status-pending">
+                                        <span class="status-badge status-pending">
                                             <i class="fas fa-clock"></i> Pending
                                         </span>
                                     <?php endif; ?>
                                 </div>
                             </div>
-                            <div class="assignment-detail-item">
-                                <div class="assignment-detail-label">Marks</div>
-                                <div class="assignment-detail-value">
-                                    <span
-                                        style="font-weight: 600; color: <?php echo $assignment_details['marks'] ? 'var(--success)' : 'var(--secondary)'; ?>">
-                                        <?php echo $assignment_details['marks'] ?? 'Not graded'; ?>
-                                    </span>
+                            <div style="padding: 12px; background: rgba(67, 97, 238, 0.05); border-radius: 8px;">
+                                <div style="font-size: 0.875rem; color: var(--primary); margin-bottom: 4px;">Marks</div>
+                                <div
+                                    style="font-weight: 600; color: <?php echo $assignment_details['marks'] ? 'var(--success)' : 'var(--secondary)'; ?>">
+                                    <?php echo $assignment_details['marks'] ?? 'Not graded'; ?>
                                 </div>
                             </div>
                         </div>
                         <?php if ($assignment_details['description']): ?>
-                            <div class="assignment-description">
-                                <h4>Assignment Description</h4>
+                            <div
+                                style="margin-top: 20px; padding: 16px; background: rgba(67, 97, 238, 0.05); border-radius: 8px; border-left: 4px solid var(--primary);">
+                                <h4 style="color: var(--primary); margin-bottom: 8px;">Assignment Description</h4>
                                 <p><?php echo htmlspecialchars($assignment_details['description']); ?></p>
                             </div>
                         <?php endif; ?>
                         <?php if ($assignment_details['submission_id']): ?>
-                            <div class="assignment-description">
-                                <h4>Submission Details</h4>
+                            <div
+                                style="margin-top: 20px; padding: 16px; background: rgba(67, 97, 238, 0.05); border-radius: 8px; border-left: 4px solid var(--success);">
+                                <h4 style="color: var(--success); margin-bottom: 8px;">Submission Details</h4>
                                 <p><strong>Submitted on:</strong>
                                     <?php echo htmlspecialchars($assignment_details['submitted_on']); ?></p>
                                 <p><strong>File:</strong>
                                     <?php if ($assignment_details['file_path']): ?>
                                         <a href="<?php echo htmlspecialchars($assignment_details['file_path']); ?>" download
-                                            class="file-info">
+                                            style="color: var(--primary); text-decoration: none;">
                                             <i class="fas fa-download"></i> Download submitted file
                                         </a>
                                     <?php else: ?>
@@ -1476,7 +1629,7 @@ if (isset($_GET['assignment_id'])) {
                             </div>
                         <?php endif; ?>
                     </div>
-                    <div class="form-actions">
+                    <div class="modal-buttons">
                         <a href="?" class="btn btn-primary">
                             <i class="fas fa-times"></i> Close
                         </a>
@@ -1486,7 +1639,18 @@ if (isset($_GET['assignment_id'])) {
         </div>
     <?php endif; ?>
 
+    <!-- Chatbot Widget -->
+    <div class="chatbot-container">
+        <a href="data_con/index.html" class="chatbot-icon">
+            <div class="chatbot-pulse"></div>
+            <i class="fas fa-robot"></i>
+            <div class="chatbot-notification">AI</div>
+            <div class="chatbot-tooltip">Talk to DeepSeek AI Assistant</div>
+        </a>
+    </div>
+
     <script>
+        // Modal functions
         function openProfileModal() {
             document.getElementById('profileModal').style.display = 'block';
         }
@@ -1541,119 +1705,25 @@ if (isset($_GET['assignment_id'])) {
             }
         });
 
-        // Chatbot functionality
-        let chatbotOpen = false;
-
-        function toggleChatbot() {
-            const modal = document.getElementById('chatbotModal');
-            chatbotOpen = !chatbotOpen;
-            modal.style.display = chatbotOpen ? 'block' : 'none';
-            
-            // Remove notification when opened
-            if (chatbotOpen) {
-                document.querySelector('.chatbot-notification').style.display = 'none';
-            }
-        }
-
-        function sendMessage() {
-            const input = document.getElementById('chatbotInput');
-            const message = input.value.trim();
-            
-            if (message) {
-                addMessage(message, 'user');
-                input.value = '';
-                
-                // Simulate bot response
-                setTimeout(() => {
-                    generateBotResponse(message);
-                }, 1000);
-            }
-        }
-
-        function sendQuickQuestion(question) {
-            addMessage(question, 'user');
-            
-            // Simulate bot response
-            setTimeout(() => {
-                generateBotResponse(question);
-            }, 1000);
-        }
-
-        function addMessage(text, sender) {
-            const body = document.getElementById('chatbotBody');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `chatbot-message ${sender}`;
-            
-            if (sender === 'bot') {
-                messageDiv.innerHTML = `
-                    <div class="message-avatar">
-                        <i class="fas fa-robot"></i>
-                    </div>
-                    <div class="message-content">${text}</div>
-                `;
-            } else {
-                messageDiv.innerHTML = `
-                    <div class="message-content">${text}</div>
-                `;
-            }
-            
-            body.appendChild(messageDiv);
-            body.scrollTop = body.scrollHeight;
-        }
-
-        function generateBotResponse(userMessage) {
-            let response = "I understand you're asking about: '" + userMessage + "'. In a real implementation, I would connect to an AI service to provide detailed assistance.";
-            
-            // Simple response logic
-            const lowerMessage = userMessage.toLowerCase();
-            
-            if (lowerMessage.includes('add') && lowerMessage.includes('user')) {
-                response = "To add a new user:\n1. Click the 'Add New User' button\n2. Fill in the required information\n3. Select the user role\n4. Click 'Add User' to save";
-            } else if (lowerMessage.includes('department') || lowerMessage.includes('statistics')) {
-                response = "Department statistics show the distribution of students across different departments. You can view this in the 'Department Statistics' section above.";
-            } else if (lowerMessage.includes('user management')) {
-                response = "User management allows you to:\n• View all users\n• Add new users\n• Edit existing users\n• Delete users\nUse the table above to manage your users efficiently.";
-            } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-                response = "Hello! I'm here to help you with the EduSync admin dashboard. You can ask me about user management, statistics, or any other features!";
-            }
-            
-            addMessage(response, 'bot');
-        }
-
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        }
-
-        // Close chatbot when clicking outside
-        document.addEventListener('click', function(event) {
-            const modal = document.getElementById('chatbotModal');
-            const icon = document.querySelector('.chatbot-icon');
-            
-            if (chatbotOpen && !modal.contains(event.target) && !icon.contains(event.target)) {
-                toggleChatbot();
-            }
+        // Add counting animation to stats
+        document.addEventListener('DOMContentLoaded', function () {
+            const statNumbers = document.querySelectorAll('.stat-info h3');
+            statNumbers.forEach(stat => {
+                const target = parseInt(stat.textContent);
+                let current = 0;
+                const increment = target / 50;
+                const timer = setInterval(() => {
+                    current += increment;
+                    if (current >= target) {
+                        stat.textContent = target;
+                        clearInterval(timer);
+                    } else {
+                        stat.textContent = Math.floor(current);
+                    }
+                }, 30);
+            });
         });
     </script>
-    <!-- Chatbot Widget -->
-    <div class="chatbot-container">
-        <div class="chatbot-icon" onclick="toggleChatbot()">
-            <div class="chatbot-pulse"></div>
-            <i class="fas fa-robot"></i>
-            <div class="chatbot-notification">1</div>
-        </div>
-    </div>
-
-    <!-- Chatbot Widget -->
-    <div class="chatbot-container">
-        <a href="data_con/index.html" class="chatbot-icon">
-            <div class="chatbot-pulse"></div>
-            <i class="fas fa-robot"></i>
-            <div class="chatbot-notification">AI</div>
-            <div class="chatbot-tooltip">Talk to DeepSeek AI Assistant</div>
-        </a>
-    </div>
 </body>
 
 </html>

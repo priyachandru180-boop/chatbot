@@ -1021,7 +1021,7 @@ $dept_stats = $dept_stats_stmt->fetchAll();
                 <p>SYSTEM CONTROL PANEL</p>
             </div>
             <div class="cyber-menu">
-                <a href="#" class="cyber-menu-item active">
+                <!--<a href="#" class="cyber-menu-item active">
                     <i class="fas fa-desktop"></i>
                     <span>DASHBOARD</span>
                 </a>
@@ -1040,7 +1040,7 @@ $dept_stats = $dept_stats_stmt->fetchAll();
                 <a href="#" class="cyber-menu-item">
                     <i class="fas fa-cogs"></i>
                     <span>SYSTEM SETTINGS</span>
-                </a>
+                </a>-->
             </div>
         </div>
 
