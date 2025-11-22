@@ -1,0 +1,22 @@
+TABLE: subjects
+
+[
+    {
+        "subject_id": 1,
+        "subject_code": "CS301",
+        "subject_name": "Database Systems",
+        "department": "Computer Science",
+        "semester": 3,
+        "credits": 4
+    },
+    {
+        "subject_id": 2,
+        "subject_code": "CS302",
+        "subject_name": "Web Technologies",
+        "department": "Computer Science",
+        "semester": 3,
+        "credits": 3
+    }
+]
+
+Exported: 2025-11-21T23:17:37.294Z

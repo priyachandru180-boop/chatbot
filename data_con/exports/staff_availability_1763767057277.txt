@@ -1,0 +1,20 @@
+TABLE: staff_availability
+
+[
+    {
+        "available_id": 1,
+        "staff_id": 1,
+        "day_of_week": "Monday",
+        "start_time": "10:00:00",
+        "end_time": "12:00:00"
+    },
+    {
+        "available_id": 2,
+        "staff_id": 1,
+        "day_of_week": "Wednesday",
+        "start_time": "14:00:00",
+        "end_time": "16:00:00"
+    }
+]
+
+Exported: 2025-11-21T23:17:37.277Z

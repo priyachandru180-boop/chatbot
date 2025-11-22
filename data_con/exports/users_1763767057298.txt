@@ -1,0 +1,34 @@
+TABLE: users
+
+[
+    {
+        "user_id": 1,
+        "username": "admin",
+        "email": "admin@college.edu",
+        "password": "password",
+        "role": "admin"
+    },
+    {
+        "user_id": 2,
+        "username": "john_doe",
+        "email": "john@student.edu",
+        "password": "password",
+        "role": "student"
+    },
+    {
+        "user_id": 5,
+        "username": "ghyy",
+        "email": "fgtgh@ghy.edu",
+        "password": "123",
+        "role": "student"
+    },
+    {
+        "user_id": 3,
+        "username": "prof_smith",
+        "email": "smith@staff.edu",
+        "password": "password",
+        "role": "staff"
+    }
+]
+
+Exported: 2025-11-21T23:17:37.298Z

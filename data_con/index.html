@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Management System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        .nav-links a:hover {
+            color: #667eea;
+        }
+        
+        .hero {
+            padding: 5rem 0;
+            text-align: center;
+            color: white;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            max-width: 700px;
+            margin: 0 auto 2rem;
+            opacity: 0.9;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: #fff;
+            color: #667eea;
+            padding: 12px 30px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .features {
+            padding: 5rem 0;
+            background: #f9f9f9;
+        }
+        
+        .section-title {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .section-title h2 {
+            font-size: 2.5rem;
+            color: #333;
+            margin-bottom: 1rem;
+        }
+        
+        .section-title p {
+            color: #666;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #667eea;
+        }
+        
+        .feature-card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+        
+        .feature-card p {
+            color: #666;
+        }
+        
+        .about {
+            padding: 5rem 0;
+        }
+        
+        .about-content {
+            display: flex;
+            align-items: center;
+            gap: 4rem;
+        }
+        
+        .about-text {
+            flex: 1;
+        }
+        
+        .about-text h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            color: white;
+        }
+        
+        .about-text p {
+            margin-bottom: 1.5rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .about-image {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.2rem;
+        }
+        
+        footer {
+            background: #333;
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .footer-links a {
+            color: #ccc;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .footer-links a:hover {
+            color: white;
+        }
+        
+        .copyright {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        /* Export Interface Styles */
+        .export-interface {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .export-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .export-btn:hover {
+            background: #5a6fd8;
+        }
+
+        .export-btn.success {
+            background: #28a745;
+        }
+
+        .export-btn.danger {
+            background: #dc3545;
+        }
+
+        .export-btn.info {
+            background: #17a2b8;
+        }
+
+        .status-box {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .about-content {
+                flex-direction: column;
+            }
+
+            .export-interface {
+                position: relative;
+                top: auto;
+                right: auto;
+                max-width: 100%;
+                margin: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <div class="logo">StudentAI</div>
+                <div class="nav-links">
+                    <a href="#home">Home</a>
+                    <a href="#features">Features</a>
+                    <a href="#about">About</a>
+                    <a href="#contact">Contact</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero" id="home">
+        <div class="container">
+            <h1>AI-Powered Student Management</h1>
+            <p>Transform your educational institution with intelligent AI assistance for student data management and analytics.</p>
+            <a href="#features" class="btn">Explore Features</a>
+        </div>
+    </section>
+
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-title">
+                <h2>Powerful Features</h2>
+                <p>Everything you need to manage your educational institution efficiently</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Data Management</h3>
+                    <p>Export and manage student data seamlessly with our intelligent database system.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h3>AI Assistant</h3>
+                    <p>Get instant answers and insights about your student data through our AI chat assistant.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Secure & Private</h3>
+                    <p>Your data is protected with enterprise-grade security and privacy measures.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="about" id="about">
+        <div class="container">
+            <div class="about-content">
+                <div class="about-text">
+                    <h2>About Our System</h2>
+                    <p>We've created a comprehensive solution that combines database management with artificial intelligence to revolutionize educational administration.</p>
+                    <p>Export your MySQL database, upload it to the AI workspace, and get intelligent insights about your students, assignments, and attendance.</p>
+                    <a href="#contact" class="btn">Get Started Today</a>
+                </div>
+                <div class="about-image">
+                    <div>AI Education Platform</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-links">
+                <a href="#home">Home</a>
+                <a href="#features">Features</a>
+                <a href="#about">About</a>
+                <a href="#contact">Contact</a>
+            </div>
+            <p class="copyright">© 2025 Student Management System. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Database Export Interface -->
+    <div class="export-interface">
+        <button class="close-btn" onclick="document.querySelector('.export-interface').style.display='none'">×</button>
+        <h3 style="margin-bottom: 15px; color: #667eea;">Database Management</h3>
+        
+        <button class="export-btn" onclick="exportDatabase()">
+            📊 Export Database to Folder
+        </button>
+        
+        <button class="export-btn success" onclick="bulkUploadToWorkspace()">
+            🚀 Upload to AI Workspace
+        </button>
+        
+        
+        
+        
+        
+        <div id="export-status" class="status-box">
+            Ready to manage your database...
+        </div>
+    </div>
+
+    <!-- Minimal AnythingLLM Chat Widget -->
+    <script
+      data-embed-id="19e28c75-fec0-4b1d-9135-678e2acc86fc"
+      data-base-api-url="http://localhost:3001/api/embed"
+      src="http://localhost:3001/embed/anythingllm-chat-widget.min.js">
+    </script>
+
+    <script>
+    // API base URL for our backend
+    const API_BASE = 'http://localhost:3002/api';
+
+    // Export database to folder
+    async function exportDatabase() {
+        const statusDiv = document.getElementById('export-status');
+        statusDiv.innerHTML = '🔄 Exporting database to folder...';
+        
+        try {
+            const response = await fetch(`${API_BASE}/export-database`);
+            const result = await response.json();
+            
+            if (result.success) {
+                statusDiv.innerHTML = `✅ ${result.message}<br>Exported ${result.totalFiles} files`;
+                console.log('Export results:', result.files);
+            } else {
+                statusDiv.innerHTML = `❌ Error: ${result.message}`;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `❌ Network error: ${error.message}`;
+            console.error('Export error:', error);
+        }
+    }
+
+    // Bulk upload exported files to workspace
+    async function bulkUploadToWorkspace() {
+        const statusDiv = document.getElementById('export-status');
+        statusDiv.innerHTML = '🔄 Uploading files to AI workspace...<br><small>Please wait...</small>';
+        
+        try {
+            const response = await fetch(`${API_BASE}/bulk-upload-exports`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                statusDiv.innerHTML = `✅ ${result.message}`;
+                
+                if (result.results) {
+                    const successCount = result.results.filter(r => r.success).length;
+                    const errorCount = result.results.filter(r => !r.success).length;
+                    
+                    statusDiv.innerHTML += `<br>Success: ${successCount}, Failed: ${errorCount}`;
+                }
+            } else {
+                statusDiv.innerHTML = `❌ Error: ${result.message}`;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `❌ Network error: ${error.message}`;
+            console.error('Upload error:', error);
+        }
+    }
+
+    // Get workspace information
+    async function getWorkspaceInfo() {
+        const statusDiv = document.getElementById('export-status');
+        statusDiv.innerHTML = '🔄 Fetching workspace info...';
+        
+        try {
+            const response = await fetch(`${API_BASE}/workspace-info`);
+            const result = await response.json();
+            
+            if (result.success) {
+                statusDiv.innerHTML = `✅ Workspace: ${result.workspace.name}<br>`;
+                statusDiv.innerHTML += `Type: ${result.workspace.type || 'Standard'}`;
+            } else {
+                statusDiv.innerHTML = `❌ Error: ${result.message}`;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `❌ Network error: ${error.message}`;
+            console.error('Workspace info error:', error);
+        }
+    }
+
+    // Get workspace documents
+    async function getWorkspaceDocuments() {
+        const statusDiv = document.getElementById('export-status');
+        statusDiv.innerHTML = '🔄 Checking workspace documents...';
+        
+        try {
+            const response = await fetch(`${API_BASE}/workspace-documents`);
+            const result = await response.json();
+            
+            if (result.success) {
+                statusDiv.innerHTML = `✅ Documents in workspace: ${result.count}`;
+                if (result.documents && result.documents.length > 0) {
+                    statusDiv.innerHTML += `<br><br>Recent documents:`;
+                    result.documents.slice(0, 5).forEach(doc => {
+                        statusDiv.innerHTML += `<br>• ${doc.name || doc.filename || 'Document'}`;
+                    });
+                    if (result.count > 5) {
+                        statusDiv.innerHTML += `<br>... and ${result.count - 5} more`;
+                    }
+                }
+            } else {
+                statusDiv.innerHTML = `❌ Error: ${result.message}`;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `❌ Network error: ${error.message}`;
+            console.error('Workspace documents error:', error);
+        }
+    }
+    </script>
+</body>
+</html>

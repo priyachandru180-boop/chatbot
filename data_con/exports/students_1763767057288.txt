@@ -1,0 +1,26 @@
+TABLE: students
+
+[
+    {
+        "student_id": 1,
+        "user_id": 2,
+        "name": "John roy",
+        "email": "john@student.edu",
+        "phone": "+1 234 567 8900",
+        "department": "Computer Science",
+        "admission_year": 2023,
+        "semester": 3
+    },
+    {
+        "student_id": 2,
+        "user_id": 5,
+        "name": "",
+        "email": "fgtgh@ghy.edu",
+        "phone": null,
+        "department": "",
+        "admission_year": null,
+        "semester": 3
+    }
+]
+
+Exported: 2025-11-21T23:17:37.288Z

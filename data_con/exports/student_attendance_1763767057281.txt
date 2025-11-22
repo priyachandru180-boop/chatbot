@@ -1,0 +1,54 @@
+TABLE: student_attendance
+
+[
+    {
+        "attendance_id": 1,
+        "student_id": 1,
+        "subject_id": 1,
+        "date": "2024-01-14T18:30:00.000Z",
+        "status": "present",
+        "remarks": "On time"
+    },
+    {
+        "attendance_id": 2,
+        "student_id": 1,
+        "subject_id": 1,
+        "date": "2024-01-15T18:30:00.000Z",
+        "status": "present",
+        "remarks": "On time"
+    },
+    {
+        "attendance_id": 3,
+        "student_id": 1,
+        "subject_id": 1,
+        "date": "2024-01-16T18:30:00.000Z",
+        "status": "absent",
+        "remarks": "Sick leave"
+    },
+    {
+        "attendance_id": 4,
+        "student_id": 1,
+        "subject_id": 2,
+        "date": "2024-01-14T18:30:00.000Z",
+        "status": "present",
+        "remarks": "On time"
+    },
+    {
+        "attendance_id": 5,
+        "student_id": 1,
+        "subject_id": 2,
+        "date": "2024-01-15T18:30:00.000Z",
+        "status": "present",
+        "remarks": "On time"
+    },
+    {
+        "attendance_id": 6,
+        "student_id": 1,
+        "subject_id": 1,
+        "date": "2025-11-20T18:30:00.000Z",
+        "status": "present",
+        "remarks": ""
+    }
+]
+
+Exported: 2025-11-21T23:17:37.281Z

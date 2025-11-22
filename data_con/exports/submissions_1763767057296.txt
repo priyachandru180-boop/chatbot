@@ -1,0 +1,42 @@
+TABLE: submissions
+
+[
+    {
+        "submission_id": 1,
+        "assignment_id": 1,
+        "student_id": 1,
+        "file_path": "/uploads/assignment1.pdf",
+        "marks": "85.50",
+        "status": "graded",
+        "submitted_on": "2024-01-10T09:00:00.000Z"
+    },
+    {
+        "submission_id": 2,
+        "assignment_id": 2,
+        "student_id": 1,
+        "file_path": "/uploads/assignment2.pdf",
+        "marks": null,
+        "status": "submitted",
+        "submitted_on": "2024-01-12T11:15:00.000Z"
+    },
+    {
+        "submission_id": 3,
+        "assignment_id": 3,
+        "student_id": 1,
+        "file_path": "/uploads/index.html",
+        "marks": "0.00",
+        "status": "graded",
+        "submitted_on": "2025-11-21T16:32:59.000Z"
+    },
+    {
+        "submission_id": 4,
+        "assignment_id": 4,
+        "student_id": 1,
+        "file_path": "/uploads/index.html",
+        "marks": null,
+        "status": "submitted",
+        "submitted_on": "2025-11-21T19:18:46.000Z"
+    }
+]
+
+Exported: 2025-11-21T23:17:37.296Z
